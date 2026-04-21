@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #81ecff;
+  --color-primary-dim: #00d4ec;
+  --color-primary-fixed: #00e3fd;
+  
+  --color-secondary: #5cfd80;
+  --color-secondary-dim: #4bee74;
+  
+  --color-tertiary: #ff7350;
+  --color-tertiary-dim: #dc3300;
+  
+  --color-bg-base: #0a0f13;
+  --color-surface-container: #141a1f;
+  --color-surface-high: #1a2026;
+  --color-surface-lowest: #000000;
+  
+  --color-text-primary: #f3f7fd;
+  --color-text-variant: #a7abb1;
+  
+  --font-inter: 'Inter', sans-serif;
+  --font-manrope: 'Manrope', sans-serif;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-bg-base);
+    color: var(--color-text-primary);
+    font-family: var(--font-inter);
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-bg-base);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-high);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary-dim);
+}
+
+.glass-panel {
+  background-color: rgba(20, 26, 31, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(129, 236, 255, 0.1);
+}
+
+.glow-primary {
+  box-shadow: 0 0 15px rgba(129, 236, 255, 0.2);
+}
+
+.glow-secondary {
+  box-shadow: 0 0 15px rgba(92, 253, 128, 0.2);
+}
+
+.glow-tertiary {
+  box-shadow: 0 0 15px rgba(255, 115, 80, 0.2);
+}
+
+.glow-primary-text {
+  text-shadow: 0 0 8px rgba(129, 236, 255, 0.5);
+}
+
+.glow-secondary-text {
+  text-shadow: 0 0 8px rgba(92, 253, 128, 0.5);
+}
+
+.glow-tertiary-text {
+  text-shadow: 0 0 8px rgba(255, 115, 80, 0.5);
+}
+
+.neo-border {
+  border: 1px solid rgba(167, 171, 177, 0.2);
+}
