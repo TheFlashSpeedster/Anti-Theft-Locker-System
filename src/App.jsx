@@ -1,13 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import { db } from './firebase';
-import { ref, onValue, set, serverTimestamp } from 'firebase/database';
+import { ref, onValue, set } from 'firebase/database';
+import Login from './pages/Login';
 import VaultStatus from './pages/VaultStatus';
 import HardwareConfig from './pages/HardwareConfig';
 import EventLog from './pages/EventLog';
 import Settings from './pages/Settings';
 
-function Layout({ children, systemState, connected }) {
+function Layout({ children, systemState, connected, onLogout }) {
   const location = useLocation();
   const path = location.pathname;
   
@@ -73,17 +74,18 @@ function Layout({ children, systemState, connected }) {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            {/* Firebase connection badge */}
+            {/* Connection badge */}
             <div className={`hidden md:flex items-center gap-2 px-3 py-1 rounded-full border text-[10px] font-mono uppercase tracking-widest ${connected ? 'border-secondary/40 bg-secondary/10 text-secondary' : 'border-orange-500/40 bg-orange-500/10 text-orange-400'}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-secondary' : 'bg-orange-400 animate-pulse'}`}></span>
+              <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-secondary' : 'bg-orange-400 animate-pulse'}`} />
               {connected ? 'Firebase Live' : 'Sim Mode'}
             </div>
-            <button className="text-text-variant hover:text-primary transition-colors">
-              <span className="material-symbols-outlined">notifications</span>
+            <button
+              onClick={onLogout}
+              title="Logout"
+              className="text-text-variant hover:text-tertiary transition-colors"
+            >
+              <span className="material-symbols-outlined">logout</span>
             </button>
-            <div className="w-8 h-8 rounded-full bg-surface-high border border-primary/30 flex items-center justify-center">
-              <span className="material-symbols-outlined text-primary text-sm">person</span>
-            </div>
           </div>
         </header>
 
@@ -130,6 +132,7 @@ function Layout({ children, systemState, connected }) {
 }
 
 function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('auth') === 'true');
   const [connected, setConnected] = useState(false);
   const [systemState, setSystemState] = useState({
     isLocked: true,
@@ -144,35 +147,60 @@ function App() {
     ]
   });
 
-  // ── FIREBASE: listen to ESP32 state ──────────────────────────
+  // ── FIREBASE: listen to ESP32 state ──────────────────────────────────────
+  // LIVE DETECTION: ESP32 pushes uptimeMs=millis() every heartbeat.
+  // We persist the last seen value in localStorage. On page reload, if Firebase
+  // still has the same uptimeMs as localStorage → stale → offline instantly.
+  // If uptimeMs is different → ESP32 sent a new heartbeat → live.
+  const STALE_MS = 25000; // 3 missed heartbeats (heartbeat = 8s)
+  const wallClockRef  = useRef(0); // 0 = stale until first new heartbeat
+  const lastUptimeRef = useRef(parseInt(localStorage.getItem('esp32_uptime') || '0'));
+
   useEffect(() => {
     const statusRef = ref(db, 'locker/status');
     const unsubscribe = onValue(statusRef, (snapshot) => {
       const data = snapshot.val();
-      if (!data) return;
-      setConnected(true);
+      if (!data) { setConnected(false); return; }
 
-      let newLcdText = [" SYSTEM LOCKED  ", "   ENTER PIN:   "];
-      if (!data.isLocked)              newLcdText = [" ACCESS GRANTED ", "  DOOR OPENED   "];
-      else if (data.isBreached)        newLcdText = [" SYSTEM BREACHED", "  ALARM ACTIVE! "];
-      else if (data.failedAttempts > 0) newLcdText = [" INCORRECT PIN  ", `  ATTEMPTS: ${data.failedAttempts}/3 `];
+      // uptimeMs always increments → if different from last stored → genuine new push
+      const uptimeMs = data.uptimeMs ?? 0;
+      if (uptimeMs > 0 && uptimeMs !== lastUptimeRef.current) {
+        lastUptimeRef.current = uptimeMs;
+        localStorage.setItem('esp32_uptime', uptimeMs);
+        wallClockRef.current = Date.now();
+        setConnected(true);
+      }
+
+      let newLcdText = [' SYSTEM LOCKED  ', '   ENTER PIN:   '];
+      if (!data.isLocked)              newLcdText = [' ACCESS GRANTED ', '  DOOR OPENED   '];
+      else if (data.isBreached)        newLcdText = [' SYSTEM BREACHED', '  ALARM ACTIVE! '];
+      else if (data.failedAttempts > 0) newLcdText = [' INCORRECT PIN  ', `  ATTEMPTS: ${data.failedAttempts}/3 `];
 
       setSystemState(prev => ({
         ...prev,
-        isLocked:               data.isLocked              ?? prev.isLocked,
+        isLocked:                data.isLocked               ?? prev.isLocked,
         isSecretCompartmentOpen: data.isSecretCompartmentOpen ?? prev.isSecretCompartmentOpen,
-        failedAttempts:         data.failedAttempts         ?? prev.failedAttempts,
-        buzzerOn:               data.buzzerOn               ?? prev.buzzerOn,
-        isBreached:             data.isBreached             ?? prev.isBreached,
-        vibrationDetected:      data.vibrationDetected      ?? prev.vibrationDetected,
+        failedAttempts:          data.failedAttempts          ?? prev.failedAttempts,
+        buzzerOn:                data.buzzerOn                ?? prev.buzzerOn,
+        isBreached:              data.isBreached              ?? prev.isBreached,
+        vibrationDetected:       data.vibrationDetected       ?? prev.vibrationDetected,
         lcdText: newLcdText,
       }));
     }, (error) => {
-      console.error("Firebase read error:", error);
+      console.error('Firebase read error:', error);
       setConnected(false);
     });
-    return () => unsubscribe();
+
+    // Watchdog: checks every 5s if the last genuine heartbeat is older than STALE_MS.
+    // wallClockRef=0 means no heartbeat received yet → always offline until first one.
+    const watchdog = setInterval(() => {
+      const wall = wallClockRef.current;
+      if (wall === 0 || Date.now() - wall >= STALE_MS) setConnected(false);
+    }, 5000);
+
+    return () => { unsubscribe(); clearInterval(watchdog); };
   }, []);
+
 
   // ── FIREBASE: listen to logs from ESP32 ──────────────────────
   useEffect(() => {
@@ -197,64 +225,90 @@ function App() {
     }));
   };
 
-  // ── FIREBASE: send command to ESP32 ──────────────────────────
+  // ── Unified command handler: Live = Firebase, Offline = simulate locally ──
   const sendCommand = async (cmd) => {
+    // Always attempt Firebase push
     try {
-      await set(ref(db, 'locker/command'), {
-        cmd,
-        ts: Date.now(),
-      });
+      await set(ref(db, 'locker/command'), { cmd, ts: Math.floor(Date.now() / 1000) }); // epoch SECONDS — fits in ESP32 32-bit long
     } catch (err) {
-      console.error("Firebase command failed:", err);
+      console.error('Firebase command failed:', err);
     }
-  };
 
-  // ── Simulation fallbacks (work even without Firebase) ────────
-  const simulateCorrectPin = () => {
-    sendCommand('/unlock');
-    if (!connected) {
-      setSystemState(prev => ({ ...prev, isLocked: false, failedAttempts: 0, buzzerOn: false, isBreached: false, isSecretCompartmentOpen: false, vibrationDetected: false, lcdText: [" ACCESS GRANTED ", "  DOOR OPENED   "] }));
-      addLog('success', '[SIM] Auth Success - Locker Opened');
-    }
-  };
-
-  const simulateWrongPin = () => {
+    // If not connected to ESP32, simulate state locally
     if (!connected) {
       setSystemState(prev => {
-        const newAttempts = prev.failedAttempts + 1;
-        if (newAttempts >= 3) {
-          addLog('critical', '[SIM] CRITICAL: 3 Failed Attempts - Alert Triggered');
-          return { ...prev, failedAttempts: newAttempts, buzzerOn: true, isSecretCompartmentOpen: true, isBreached: true, lcdText: [" SYSTEM BREACHED", "  ALARM ACTIVE! "] };
+        let next = { ...prev };
+        switch (cmd) {
+          case '/unlock':
+            next = { ...next, isLocked: false, lcdText: [' ACCESS GRANTED ', '  DOOR OPENED   '] };
+            addLog('success', '[SIM] Door unlocked');
+            break;
+          case '/lock':
+            next = { ...next, isLocked: true, lcdText: [' SYSTEM LOCKED  ', '   ENTER PIN:   '] };
+            addLog('info', '[SIM] Door locked');
+            break;
+          case '/trapdoor_open':
+            next = { ...next, isSecretCompartmentOpen: true };
+            addLog('info', '[SIM] Trapdoor opened');
+            break;
+          case '/trapdoor_close':
+            next = { ...next, isSecretCompartmentOpen: false };
+            addLog('info', '[SIM] Trapdoor closed');
+            break;
+          case '/trapdoor_flip':
+            next = { ...next, isSecretCompartmentOpen: false };
+            addLog('info', '[SIM] Trapdoor flip sequence complete');
+            break;
+          case '/buzzer_on':
+            next = { ...next, buzzerOn: true };
+            addLog('warning', '[SIM] Buzzer activated');
+            break;
+          case '/buzzer_off':
+            next = { ...next, buzzerOn: false };
+            addLog('info', '[SIM] Buzzer deactivated');
+            break;
+          case '/reset':
+            next = { ...next, isLocked: true, failedAttempts: 0, buzzerOn: false, isSecretCompartmentOpen: false, isBreached: false, vibrationDetected: false, lcdText: [' SYSTEM LOCKED  ', '   ENTER PIN:   '] };
+            addLog('info', '[SIM] System reset');
+            break;
+          // Simulation-only physical inputs
+          case '__sim_wrong_pin': {
+            const attempts = prev.failedAttempts + 1;
+            if (attempts >= 3) {
+              addLog('critical', '[SIM] 3 failed attempts — alert triggered');
+              next = { ...next, failedAttempts: attempts, buzzerOn: true, isSecretCompartmentOpen: true, isBreached: true, lcdText: [' SYSTEM BREACHED', '  ALARM ACTIVE! '] };
+            } else {
+              addLog('warning', `[SIM] Wrong PIN — attempt ${attempts}/3`);
+              next = { ...next, failedAttempts: attempts, lcdText: [' INCORRECT PIN  ', `  ATTEMPTS: ${attempts}/3 `] };
+            }
+            break;
+          }
+          case '__sim_vibration':
+            if (prev.isLocked) {
+              addLog('critical', '[SIM] Vibration detected — tampering alert');
+              next = { ...next, vibrationDetected: true, buzzerOn: true, isBreached: true, lcdText: ['TAMPER DETECTED!', '  ALARM ACTIVE! '] };
+            }
+            break;
+          default:
+            break;
         }
-        addLog('warning', `[SIM] Auth Failed - Attempt ${newAttempts}/3`);
-        return { ...prev, failedAttempts: newAttempts, lcdText: [" INCORRECT PIN  ", `  ATTEMPTS: ${newAttempts}/3 `] };
+        return next;
       });
     }
   };
 
-  const simulateVibration = () => {
-    if (!connected) {
-      setSystemState(prev => {
-        if (!prev.isLocked) return prev;
-        addLog('critical', '[SIM] CRITICAL: Vibration Detected - Tampering');
-        return { ...prev, vibrationDetected: true, buzzerOn: true, isBreached: true, lcdText: ["TAMPER DETECTED!", "  ALARM ACTIVE! "] };
-      });
-    }
+  const handleLogout = () => {
+    localStorage.removeItem('auth');
+    setIsLoggedIn(false);
   };
 
-  const resetSystem = () => {
-    sendCommand('/reset');
-    if (!connected) {
-      setSystemState(prev => ({ ...prev, isLocked: true, failedAttempts: 0, buzzerOn: false, isSecretCompartmentOpen: false, isBreached: false, vibrationDetected: false, lcdText: [" SYSTEM LOCKED  ", "   ENTER PIN:   "] }));
-      addLog('info', '[SIM] System Reset by Administrator');
-    }
-  };
+  if (!isLoggedIn) return <Login onLogin={() => setIsLoggedIn(true)} />;
 
   return (
     <Router>
-      <Layout systemState={systemState} connected={connected}>
+      <Layout systemState={systemState} connected={connected} onLogout={handleLogout}>
         <Routes>
-          <Route path="/" element={<VaultStatus state={systemState} connected={connected} onCorrectPin={simulateCorrectPin} onWrongPin={simulateWrongPin} onVibration={simulateVibration} onReset={resetSystem} />} />
+          <Route path="/" element={<VaultStatus state={systemState} connected={connected} onCommand={sendCommand} />} />
           <Route path="/hardware" element={<HardwareConfig state={systemState} />} />
           <Route path="/logs" element={<EventLog logs={systemState.logs} />} />
           <Route path="/settings" element={<Settings />} />
