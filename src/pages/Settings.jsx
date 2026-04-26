@@ -34,7 +34,7 @@ export default function Settings() {
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${telegramEnabled ? 'bg-primary/20 text-primary' : 'bg-surface-high text-text-variant'}`}>
                     <span className="material-symbols-outlined">send</span>
                   </div>
-                  <button 
+                  <button
                     onClick={() => setTelegramEnabled(!telegramEnabled)}
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${telegramEnabled ? 'bg-primary' : 'bg-surface-high'}`}
                   >
@@ -43,12 +43,12 @@ export default function Settings() {
                 </div>
                 <h3 className="font-bold tracking-wider mb-1">Telegram Bot API</h3>
                 <p className="text-xs text-text-variant mb-4 h-8">Instant push alerts via secure API webhook.</p>
-                
+
                 <div className="space-y-3">
                   <div>
                     <label className="block text-[10px] font-mono uppercase tracking-widest text-text-variant mb-1">Bot Token</label>
-                    <input 
-                      type="password" 
+                    <input
+                      type="password"
                       defaultValue="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
                       disabled={!telegramEnabled}
                       className="w-full bg-bg-base border border-white/10 rounded px-3 py-1.5 text-xs font-mono text-text-primary focus:outline-none focus:border-primary/50 disabled:opacity-50"
@@ -56,8 +56,8 @@ export default function Settings() {
                   </div>
                   <div>
                     <label className="block text-[10px] font-mono uppercase tracking-widest text-text-variant mb-1">Target Chat ID</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       defaultValue="-100123456789"
                       disabled={!telegramEnabled}
                       className="w-full bg-bg-base border border-white/10 rounded px-3 py-1.5 text-xs font-mono text-text-primary focus:outline-none focus:border-primary/50 disabled:opacity-50"
@@ -72,7 +72,7 @@ export default function Settings() {
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${whatsappEnabled ? 'bg-secondary/20 text-secondary' : 'bg-surface-high text-text-variant'}`}>
                     <span className="material-symbols-outlined">chat</span>
                   </div>
-                  <button 
+                  <button
                     onClick={() => setWhatsappEnabled(!whatsappEnabled)}
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${whatsappEnabled ? 'bg-secondary' : 'bg-surface-high'}`}
                   >
@@ -81,12 +81,12 @@ export default function Settings() {
                 </div>
                 <h3 className="font-bold tracking-wider mb-1">WhatsApp Business</h3>
                 <p className="text-xs text-text-variant mb-4 h-8">Encrypted business channel for priority log streaming.</p>
-                
+
                 <div className="space-y-3">
                   <div>
                     <label className="block text-[10px] font-mono uppercase tracking-widest text-text-variant mb-1">API Webhook URL</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       placeholder="https://api.whatsapp.com/v1/messages"
                       disabled={!whatsappEnabled}
                       className="w-full bg-bg-base border border-white/10 rounded px-3 py-1.5 text-xs font-mono text-text-primary focus:outline-none focus:border-secondary/50 disabled:opacity-50"
@@ -94,8 +94,8 @@ export default function Settings() {
                   </div>
                   <div>
                     <label className="block text-[10px] font-mono uppercase tracking-widest text-text-variant mb-1">Auth Bearer Token</label>
-                    <input 
-                      type="password" 
+                    <input
+                      type="password"
                       placeholder="Enter Bearer Token..."
                       disabled={!whatsappEnabled}
                       className="w-full bg-bg-base border border-white/10 rounded px-3 py-1.5 text-xs font-mono text-text-primary focus:outline-none focus:border-secondary/50 disabled:opacity-50"
@@ -111,7 +111,7 @@ export default function Settings() {
           <div className="glass-panel p-6 rounded-2xl relative overflow-hidden">
             {/* Edge Accent */}
             <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary"></div>
-            
+
             <div className="flex items-center gap-3 mb-6">
               <span className="material-symbols-outlined text-primary">tune</span>
               <h2 className="font-manrope text-xl font-bold tracking-wider uppercase">Alert Frequency & Logic</h2>
@@ -124,7 +124,7 @@ export default function Settings() {
                   <span className="text-primary">85%</span>
                 </div>
                 <input type="range" min="1" max="100" defaultValue="85" className="w-full h-1 bg-surface-high rounded-lg appearance-none cursor-pointer accent-primary" />
-                <p className="text-[10px] text-text-variant mt-2 font-mono">Adjusting this affects PIR and vibration sensor thresholds across all hardware nodes.</p>
+                <p className="text-[10px] text-text-variant mt-2 font-mono">Adjusting this affects vibration sensor thresholds across all hardware nodes.</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -158,7 +158,7 @@ export default function Settings() {
               <h3 className="font-manrope text-lg font-bold tracking-wider uppercase">Silent Hours</h3>
             </div>
             <p className="text-xs text-text-variant mb-6 leading-relaxed">Suppress non-critical notifications during designated maintenance or rest periods. Critical breaches bypass this.</p>
-            
+
             <div className="space-y-3 mb-6">
               <div className="bg-surface-high/50 p-3 rounded-lg border border-white/5 flex justify-between items-center">
                 <span className="text-sm font-bold tracking-wider">Night Watch</span>
@@ -169,7 +169,7 @@ export default function Settings() {
                 <span className="text-[10px] px-2 py-1 rounded bg-surface-container text-text-variant font-mono border border-white/10">Inactive</span>
               </div>
             </div>
-            
+
             <button className="w-full py-2 rounded-lg border border-white/10 text-text-variant font-mono text-xs uppercase tracking-wider hover:bg-surface-high transition-colors flex items-center justify-center gap-2">
               <span className="material-symbols-outlined text-sm">add</span>
               Add Time Slot
@@ -182,7 +182,7 @@ export default function Settings() {
               <span className="material-symbols-outlined text-[150px]">fingerprint</span>
             </div>
             <h3 className="font-manrope text-sm font-bold tracking-wider uppercase mb-4 text-primary">System Identity</h3>
-            
+
             <div className="flex gap-4 items-center mb-4">
               <div className="w-12 h-12 rounded bg-primary/10 border border-primary/30 flex items-center justify-center text-primary">
                 <span className="material-symbols-outlined">dns</span>
@@ -192,7 +192,7 @@ export default function Settings() {
                 <div className="text-[10px] font-mono text-text-variant uppercase">Kernel 5.15.0-SENTINEL</div>
               </div>
             </div>
-            
+
             <p className="text-[10px] text-text-variant leading-relaxed">
               All configurations are hardware-encrypted and synced with the central command vault. Pulse interval: 150ms.
             </p>

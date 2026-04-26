@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, NavLink, useLocation } from 'react-router-dom';
+import { db } from './firebase';
+import { ref, onValue, set, serverTimestamp } from 'firebase/database';
 import VaultStatus from './pages/VaultStatus';
 import HardwareConfig from './pages/HardwareConfig';
 import EventLog from './pages/EventLog';
 import Settings from './pages/Settings';
 
-function Layout({ children, systemState }) {
+function Layout({ children, systemState, connected }) {
   const location = useLocation();
   const path = location.pathname;
   
@@ -25,7 +27,7 @@ function Layout({ children, systemState }) {
           <h1 className="font-manrope text-2xl font-bold tracking-widest text-primary glow-primary-text uppercase">
             Aether Sentinel
           </h1>
-          <p className="text-xs text-text-variant tracking-wider mt-1 font-mono">v2.4.0-STABLE</p>
+          <p className="text-xs text-text-variant tracking-wider mt-1 font-mono">v3.0.0-PROD</p>
         </div>
         
         <nav className="flex-1 py-6 px-4 space-y-2">
@@ -49,9 +51,9 @@ function Layout({ children, systemState }) {
         
         <div className="p-4 border-t border-t-primary/10">
           <div className="flex items-center gap-3">
-            <div className={`w-3 h-3 rounded-full ${systemState.isBreached ? 'bg-tertiary glow-tertiary animate-pulse' : 'bg-secondary glow-secondary'}`}></div>
+            <div className={`w-3 h-3 rounded-full ${systemState.isBreached ? 'bg-tertiary glow-tertiary animate-pulse' : connected ? 'bg-secondary glow-secondary' : 'bg-orange-500 animate-pulse'}`}></div>
             <span className="text-xs font-mono uppercase tracking-widest text-text-variant">
-              {systemState.isBreached ? 'System Breached' : 'System Online'}
+              {systemState.isBreached ? 'System Breached' : connected ? 'ESP32 Live' : 'Simulation Mode'}
             </span>
           </div>
         </div>
@@ -71,6 +73,11 @@ function Layout({ children, systemState }) {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            {/* Firebase connection badge */}
+            <div className={`hidden md:flex items-center gap-2 px-3 py-1 rounded-full border text-[10px] font-mono uppercase tracking-widest ${connected ? 'border-secondary/40 bg-secondary/10 text-secondary' : 'border-orange-500/40 bg-orange-500/10 text-orange-400'}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-secondary' : 'bg-orange-400 animate-pulse'}`}></span>
+              {connected ? 'Firebase Live' : 'Sim Mode'}
+            </div>
             <button className="text-text-variant hover:text-primary transition-colors">
               <span className="material-symbols-outlined">notifications</span>
             </button>
@@ -105,16 +112,16 @@ function Layout({ children, systemState }) {
       <div className="fixed bottom-20 md:bottom-8 right-8 glass-panel p-4 rounded-xl border border-primary/20 pointer-events-none z-30 hidden md:block">
         <div className="space-y-3 font-mono text-xs uppercase tracking-wider">
           <div className="flex items-center justify-between gap-6">
-            <span className="text-text-variant">GPS LOC</span>
-            <span className="text-primary">34.0522°N 118.2437°W</span>
+            <span className="text-text-variant">Firebase</span>
+            <span className={connected ? 'text-secondary' : 'text-orange-400'}>{connected ? 'CONNECTED' : 'OFFLINE'}</span>
           </div>
           <div className="flex items-center justify-between gap-6">
-            <span className="text-text-variant">UPLINK</span>
-            <span className="text-secondary">14ms [STABLE]</span>
+            <span className="text-text-variant">ESP32</span>
+            <span className={connected ? 'text-secondary' : 'text-orange-400'}>{connected ? 'REPORTING' : 'NO DATA'}</span>
           </div>
           <div className="flex items-center justify-between gap-6">
-            <span className="text-text-variant">BATT_LVL</span>
-            <span className="text-secondary">98.4% [AC_PWR]</span>
+            <span className="text-text-variant">POWER</span>
+            <span className="text-secondary">MAINS (5V)</span>
           </div>
         </div>
       </div>
@@ -123,17 +130,65 @@ function Layout({ children, systemState }) {
 }
 
 function App() {
+  const [connected, setConnected] = useState(false);
   const [systemState, setSystemState] = useState({
     isLocked: true,
     isSecretCompartmentOpen: false,
     failedAttempts: 0,
     buzzerOn: false,
-    ledOn: false,
     isBreached: false,
+    vibrationDetected: false,
+    lcdText: [" SYSTEM LOCKED  ", "   ENTER PIN:   "],
     logs: [
       { id: 1, type: 'info', message: 'System Initialized. All sectors secure.', timestamp: new Date(Date.now() - 3600000).toLocaleString() },
     ]
   });
+
+  // ── FIREBASE: listen to ESP32 state ──────────────────────────
+  useEffect(() => {
+    const statusRef = ref(db, 'locker/status');
+    const unsubscribe = onValue(statusRef, (snapshot) => {
+      const data = snapshot.val();
+      if (!data) return;
+      setConnected(true);
+
+      let newLcdText = [" SYSTEM LOCKED  ", "   ENTER PIN:   "];
+      if (!data.isLocked)              newLcdText = [" ACCESS GRANTED ", "  DOOR OPENED   "];
+      else if (data.isBreached)        newLcdText = [" SYSTEM BREACHED", "  ALARM ACTIVE! "];
+      else if (data.failedAttempts > 0) newLcdText = [" INCORRECT PIN  ", `  ATTEMPTS: ${data.failedAttempts}/3 `];
+
+      setSystemState(prev => ({
+        ...prev,
+        isLocked:               data.isLocked              ?? prev.isLocked,
+        isSecretCompartmentOpen: data.isSecretCompartmentOpen ?? prev.isSecretCompartmentOpen,
+        failedAttempts:         data.failedAttempts         ?? prev.failedAttempts,
+        buzzerOn:               data.buzzerOn               ?? prev.buzzerOn,
+        isBreached:             data.isBreached             ?? prev.isBreached,
+        vibrationDetected:      data.vibrationDetected      ?? prev.vibrationDetected,
+        lcdText: newLcdText,
+      }));
+    }, (error) => {
+      console.error("Firebase read error:", error);
+      setConnected(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // ── FIREBASE: listen to logs from ESP32 ──────────────────────
+  useEffect(() => {
+    const logsRef = ref(db, 'locker/logs');
+    const unsubscribe = onValue(logsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (!data) return;
+      // Firebase stores objects; convert to sorted array
+      const logsArray = Object.entries(data)
+        .map(([id, log]) => ({ id, ...log }))
+        .sort((a, b) => b.ts - a.ts)
+        .slice(0, 50); // Keep last 50
+      setSystemState(prev => ({ ...prev, logs: logsArray }));
+    });
+    return () => unsubscribe();
+  }, []);
 
   const addLog = (type, message) => {
     setSystemState(prev => ({
@@ -142,60 +197,64 @@ function App() {
     }));
   };
 
+  // ── FIREBASE: send command to ESP32 ──────────────────────────
+  const sendCommand = async (cmd) => {
+    try {
+      await set(ref(db, 'locker/command'), {
+        cmd,
+        ts: Date.now(),
+      });
+    } catch (err) {
+      console.error("Firebase command failed:", err);
+    }
+  };
+
+  // ── Simulation fallbacks (work even without Firebase) ────────
   const simulateCorrectPin = () => {
-    setSystemState(prev => ({
-      ...prev,
-      isLocked: false,
-      failedAttempts: 0,
-      buzzerOn: false,
-      ledOn: false,
-      isBreached: false,
-      isSecretCompartmentOpen: false,
-    }));
-    addLog('success', 'Auth Success - Locker Opened');
+    sendCommand('/unlock');
+    if (!connected) {
+      setSystemState(prev => ({ ...prev, isLocked: false, failedAttempts: 0, buzzerOn: false, isBreached: false, isSecretCompartmentOpen: false, vibrationDetected: false, lcdText: [" ACCESS GRANTED ", "  DOOR OPENED   "] }));
+      addLog('success', '[SIM] Auth Success - Locker Opened');
+    }
   };
 
   const simulateWrongPin = () => {
-    setSystemState(prev => {
-      const newAttempts = prev.failedAttempts + 1;
-      if (newAttempts >= 3) {
-        addLog('critical', 'CRITICAL: 3 Failed Attempts - Secret Compartment Deployed');
-        addLog('warning', 'Alert Dispatched via Telegram');
-        return {
-          ...prev,
-          failedAttempts: newAttempts,
-          buzzerOn: true,
-          ledOn: true,
-          isSecretCompartmentOpen: true,
-          isBreached: true,
-        };
-      }
-      addLog('warning', `Auth Failed - Attempt ${newAttempts}/3`);
-      return {
-        ...prev,
-        failedAttempts: newAttempts
-      };
-    });
+    if (!connected) {
+      setSystemState(prev => {
+        const newAttempts = prev.failedAttempts + 1;
+        if (newAttempts >= 3) {
+          addLog('critical', '[SIM] CRITICAL: 3 Failed Attempts - Alert Triggered');
+          return { ...prev, failedAttempts: newAttempts, buzzerOn: true, isSecretCompartmentOpen: true, isBreached: true, lcdText: [" SYSTEM BREACHED", "  ALARM ACTIVE! "] };
+        }
+        addLog('warning', `[SIM] Auth Failed - Attempt ${newAttempts}/3`);
+        return { ...prev, failedAttempts: newAttempts, lcdText: [" INCORRECT PIN  ", `  ATTEMPTS: ${newAttempts}/3 `] };
+      });
+    }
+  };
+
+  const simulateVibration = () => {
+    if (!connected) {
+      setSystemState(prev => {
+        if (!prev.isLocked) return prev;
+        addLog('critical', '[SIM] CRITICAL: Vibration Detected - Tampering');
+        return { ...prev, vibrationDetected: true, buzzerOn: true, isBreached: true, lcdText: ["TAMPER DETECTED!", "  ALARM ACTIVE! "] };
+      });
+    }
   };
 
   const resetSystem = () => {
-    setSystemState(prev => ({
-      ...prev,
-      isLocked: true,
-      failedAttempts: 0,
-      buzzerOn: false,
-      ledOn: false,
-      isSecretCompartmentOpen: false,
-      isBreached: false,
-    }));
-    addLog('info', 'System Reset by Administrator');
+    sendCommand('/reset');
+    if (!connected) {
+      setSystemState(prev => ({ ...prev, isLocked: true, failedAttempts: 0, buzzerOn: false, isSecretCompartmentOpen: false, isBreached: false, vibrationDetected: false, lcdText: [" SYSTEM LOCKED  ", "   ENTER PIN:   "] }));
+      addLog('info', '[SIM] System Reset by Administrator');
+    }
   };
 
   return (
     <Router>
-      <Layout systemState={systemState}>
+      <Layout systemState={systemState} connected={connected}>
         <Routes>
-          <Route path="/" element={<VaultStatus state={systemState} onCorrectPin={simulateCorrectPin} onWrongPin={simulateWrongPin} onReset={resetSystem} />} />
+          <Route path="/" element={<VaultStatus state={systemState} connected={connected} onCorrectPin={simulateCorrectPin} onWrongPin={simulateWrongPin} onVibration={simulateVibration} onReset={resetSystem} />} />
           <Route path="/hardware" element={<HardwareConfig state={systemState} />} />
           <Route path="/logs" element={<EventLog logs={systemState.logs} />} />
           <Route path="/settings" element={<Settings />} />
