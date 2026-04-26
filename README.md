@@ -1,16 +1,21 @@
-# React + Vite
+# Anti Theft Locker System
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+- Detects Wrong Attempt
+- Detects Force Breach
+- Sends Notification on Telegram
+- Fully Controllable Via Web UI
+- Live Status on Web UI
 
-Currently, two official plugins are available:
+## Components 
+- LCD 16x2 Display
+- I2C for LCD
+- Servo Motor (x2)
+- 4x4 Keypad
+- Vibration Sensor SW-420
+- Buzzer
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+# Technologies
+- ESP32
+- Arduino IDE
+- C++
+- React with Firebase (for connecting esp)
