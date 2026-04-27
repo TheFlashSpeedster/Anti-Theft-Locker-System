@@ -376,8 +376,28 @@ void triggerSecurityAlert(String reason) {
   lcd.print(reason.substring(0, 16));
   Serial.println("[ALERT] " + reason +
                  " — Trapdoor deploying. Buzzer latched ON.");
-  queueTelegram("🚨 <b>BREACH ALERT</b>\n" + reason +
-                "\nBuzzer active. Reset via web or correct PIN.");
+  // Compose a specific Telegram message based on breach reason
+  String tgramMsg;
+  if (reason.indexOf("Wrong Pass") >= 0 || reason.indexOf("Wrong PIN") >= 0) {
+    tgramMsg = "🔐 <b>SECURITY BREACH — Wrong PIN</b>\n"
+               "3 consecutive failed unlock attempts detected.\n"
+               "\u23f0 Buzzer active | Trapdoor deployed\n"
+               "\u2022 Enter correct PIN on keypad, OR\n"
+               "\u2022 Reset via web dashboard.";
+  } else if (reason.indexOf("Tamper") >= 0 || reason.indexOf("Vibration") >= 0) {
+    tgramMsg = "⚡ <b>SECURITY BREACH — Physical Tamper</b>\n"
+               "Vibration sensor (SW-420) triggered!\n"
+               "Possible forced entry or impact detected.\n"
+               "\u23f0 Buzzer active | Trapdoor deployed\n"
+               "\u2022 Enter correct PIN on keypad, OR\n"
+               "\u2022 Reset via web dashboard.";
+  } else {
+    tgramMsg = "🚨 <b>SECURITY BREACH</b>\n"
+               "Reason: " + reason + "\n"
+               "\u23f0 Buzzer active | Trapdoor deployed\n"
+               "Reset via web or correct PIN.";
+  }
+  queueTelegram(tgramMsg);
   pushStateToFirebase("ALERT: " + reason);
   pushLogToFirebase("critical",
                     "ALERT: " + reason + " — buzzer latched, reset required");
@@ -472,7 +492,11 @@ void handleCommand(String text) {
     lcd.print(" ALERT ACTIVE   ");
     digitalWrite(BUZZER_PIN, HIGH);
     // Stays ON until /buzzer_off or /reset
-    queueTelegram("🚨 <b>REMOTE ALERT</b>\nBuzzer triggered via web dashboard.\nReset via web or correct PIN.");
+    queueTelegram("🌐 <b>REMOTE ALERT — Web Trigger</b>\n"
+                  "Alarm activated manually via web dashboard.\n"
+                  "\u23f0 Buzzer latched ON\n"
+                  "\u2022 Stop via web dashboard Reset button, OR\n"
+                  "\u2022 Enter correct PIN on keypad.");
     action = "Buzzer LATCHED ON — web alert active";
 
   } else if (text == "/buzzer_off") {
