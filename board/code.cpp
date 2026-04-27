@@ -15,8 +15,8 @@
 #include <time.h>
 
 // ===================== CONFIGURATION =====================
-const char *WIFI_SSID = "dip123";
-const char *WIFI_PASSWORD = "anshu1234";
+const char *WIFI_SSID = "hello123";
+const char *WIFI_PASSWORD = "poco1234";
 
 // ── Firebase Realtime Database ────────────────────────────
 const String FIREBASE_HOST = "locker-system-02-default-rtdb.firebaseio.com";
