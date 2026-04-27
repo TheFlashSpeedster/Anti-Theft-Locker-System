@@ -79,11 +79,13 @@ function BigBtn({ label, sub, icon, onClick, color = 'secondary', active = false
 }
 
 // ── Main Page ────────────────────────────────────────────────────────────────
-export default function VaultStatus({ state, connected, onCommand }) {
+export default function VaultStatus({ state, connected, mode, canControl, onCommand }) {
   const { isLocked, isSecretCompartmentOpen, failedAttempts, buzzerOn, isBreached, vibrationDetected, lcdText } = state;
   const [pending, setPending] = useState(null);
+  const isTest = mode === 'test';
 
   const exec = (c) => async () => {
+    if (!canControl) return; // Live + offline → block
     setPending(c);
     await onCommand(c);
     setTimeout(() => setPending(null), 800);
@@ -150,14 +152,14 @@ export default function VaultStatus({ state, connected, onCommand }) {
               </p>
             </div>
 
-            {/* Sim: correct PIN button (offline only) */}
-            {!connected && (
+            {/* TEST-only: Correct PIN sim */}
+            {isTest && (
               <button onClick={exec('/reset')}
                 className="w-full flex items-center gap-4 px-5 py-3 rounded-xl bg-surface-container border border-orange-500/20 hover:border-orange-500/50 hover:bg-orange-500/10 transition-all">
                 <span className="material-symbols-outlined text-xl text-orange-400">password</span>
                 <div className="text-left">
-                  <p className="text-xs font-black uppercase font-manrope text-orange-400">[SIM] Correct PIN entered</p>
-                  <p className="text-[9px] font-mono text-text-variant">Simulate correct keypad PIN in sim mode</p>
+                  <p className="text-xs font-black uppercase font-manrope text-orange-400">[TEST] Correct PIN entered</p>
+                  <p className="text-[9px] font-mono text-text-variant">Simulate correct keypad PIN in test mode</p>
                 </div>
               </button>
             )}
@@ -271,10 +273,10 @@ export default function VaultStatus({ state, connected, onCommand }) {
             </div>
           </div>
 
-          {/* Sim-only inputs */}
-          {!connected && (
+          {/* TEST Mode simulation inputs */}
+          {isTest && (
             <div>
-              <p className="text-[9px] font-mono uppercase tracking-widest text-orange-400 mb-2 px-0.5">◌ Simulation Inputs</p>
+              <p className="text-[9px] font-mono uppercase tracking-widest text-orange-400 mb-2 px-0.5">◉ Test Inputs</p>
               <div className="grid grid-cols-2 gap-2">
                 <button onClick={exec('__sim_wrong_pin')}
                   className="flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-tertiary/20 bg-surface-container text-tertiary hover:border-tertiary/50 hover:bg-tertiary/10 transition-all">
