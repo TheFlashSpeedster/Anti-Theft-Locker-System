@@ -93,27 +93,6 @@ String telegramQueue = ""; // empty = nothing pending
 unsigned long lastTgramSend = 0;
 const int TELEGRAM_TIMEOUT = 3000; // ms — generous but Telegram is fast
 
-// ---- Keypad ring buffer (16-slot) — survives HTTP blocking ----
-#define KEYPAD_BUF_SIZE 16
-volatile char keypadRingBuf[KEYPAD_BUF_SIZE];
-volatile uint8_t keypadHead = 0; // ISR writes here
-volatile uint8_t keypadTail = 0; // loop reads here
-hw_timer_t *keypadTimer = NULL;
-portMUX_TYPE keypadMux = portMUX_INITIALIZER_UNLOCKED;
-
-void IRAM_ATTR onKeypadTimer() {
-  portENTER_CRITICAL_ISR(&keypadMux);
-  char k = keypad.getKey();
-  if (k) {
-    uint8_t next = (keypadHead + 1) % KEYPAD_BUF_SIZE;
-    if (next != keypadTail) { // drop only if truly full
-      keypadRingBuf[keypadHead] = k;
-      keypadHead = next;
-    }
-  }
-  portEXIT_CRITICAL_ISR(&keypadMux);
-}
-
 // ===================== FORWARD DECLARES ====================
 void showIdleScreen();
 void flipTrapdoor();
@@ -121,20 +100,12 @@ void resetAlert();
 void handleCommand(String text);
 void processKey(char key);
 
-// Drain all queued keystrokes — call before AND after blocking HTTP ops
+// Poll the keypad once and immediately process any key press.
+// Safe to call in the main loop and before/after blocking HTTP ops
+// because keypad.getKey() uses millis() which works correctly here.
 void drainKeypad() {
-  while (true) {
-    char k = 0;
-    portENTER_CRITICAL(&keypadMux);
-    if (keypadHead != keypadTail) {
-      k = keypadRingBuf[keypadTail];
-      keypadTail = (keypadTail + 1) % KEYPAD_BUF_SIZE;
-    }
-    portEXIT_CRITICAL(&keypadMux);
-    if (!k)
-      break;
-    processKey(k);
-  }
+  char k = keypad.getKey();
+  if (k) processKey(k);
 }
 
 // Queue a Telegram message (only stores; doesn't send immediately)
@@ -610,10 +581,7 @@ void setup() {
   servo1.write(SERVO1_LOCKED);
   servo2.write(SERVO2_CLOSED);
 
-  // Keypad timer (ESP32 core v3.x API)
-  keypadTimer = timerBegin(1000000);
-  timerAttachInterrupt(keypadTimer, &onKeypadTimer);
-  timerAlarm(keypadTimer, 20000, true, 0); // 20ms interval
+  // (Keypad polled directly in loop via keypad.getKey() — no ISR needed)
 
   // WiFi
   lcd.clear();

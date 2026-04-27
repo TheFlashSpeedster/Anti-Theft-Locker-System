@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 // ── Segmented Bar ────────────────────────────────────────────────────────────
 function Bar({ segments = 6, filled, color }) {
@@ -82,10 +82,82 @@ function BigBtn({ label, sub, icon, onClick, color = 'secondary', active = false
 export default function VaultStatus({ state, connected, mode, canControl, onCommand }) {
   const { isLocked, isSecretCompartmentOpen, failedAttempts, buzzerOn, isBreached, vibrationDetected, lcdText } = state;
   const [pending, setPending] = useState(null);
+
+  // ── Optimistic states — UI moves instantly, cleared when Firebase confirms ──
+  const [optimisticLocked,     setOptimisticLocked]     = useState(null);
+  const [optimisticBuzzer,     setOptimisticBuzzer]     = useState(null);
+  const [optimisticCompartment,setOptimisticCompartment]= useState(null);
+  const lockClearTimer       = useRef(null);
+  const buzzerClearTimer     = useRef(null);
+  const compartmentClearTimer= useRef(null);
+
+  const displayLocked      = optimisticLocked      !== null ? optimisticLocked      : isLocked;
+  const displayBuzzer      = optimisticBuzzer      !== null ? optimisticBuzzer      : buzzerOn;
+  const displayCompartment = optimisticCompartment !== null ? optimisticCompartment : isSecretCompartmentOpen;
   const isTest = mode === 'test';
 
+  // Helper: set an optimistic boolean and arm a 15 s safety timeout
+  const armOptimistic = (setter, timerRef, target) => {
+    setter(target);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      setter(null); setPending(null); timerRef.current = null;
+    }, 15000);
+  };
+
+  // ── Clear each optimistic state the moment real Firebase state matches ────
+  useEffect(() => {
+    if (optimisticLocked === null) return;
+    if (isLocked === optimisticLocked) {
+      if (lockClearTimer.current) { clearTimeout(lockClearTimer.current); lockClearTimer.current = null; }
+      setOptimisticLocked(null); setPending(null);
+    }
+  }, [isLocked, optimisticLocked]);
+
+  useEffect(() => {
+    if (optimisticBuzzer === null) return;
+    if (buzzerOn === optimisticBuzzer) {
+      if (buzzerClearTimer.current) { clearTimeout(buzzerClearTimer.current); buzzerClearTimer.current = null; }
+      setOptimisticBuzzer(null); setPending(null);
+    }
+  }, [buzzerOn, optimisticBuzzer]);
+
+  useEffect(() => {
+    if (optimisticCompartment === null) return;
+    if (isSecretCompartmentOpen === optimisticCompartment) {
+      if (compartmentClearTimer.current) { clearTimeout(compartmentClearTimer.current); compartmentClearTimer.current = null; }
+      setOptimisticCompartment(null); setPending(null);
+    }
+  }, [isSecretCompartmentOpen, optimisticCompartment]);
+
   const exec = (c) => async () => {
-    if (!canControl) return; // Live + offline → block
+    if (!canControl) return;
+
+    // Lock / Unlock — wait for isLocked confirmation
+    if (c === '/unlock' || c === '/lock') {
+      armOptimistic(setOptimisticLocked, lockClearTimer, c === '/unlock' ? false : true);
+      setPending(c);
+      await onCommand(c);
+      return; // useEffect clears pending when confirmed
+    }
+
+    // Buzzer — wait for buzzerOn confirmation
+    if (c === '/buzzer_on' || c === '/buzzer_off') {
+      armOptimistic(setOptimisticBuzzer, buzzerClearTimer, c === '/buzzer_on' ? true : false);
+      setPending(c);
+      await onCommand(c);
+      return;
+    }
+
+    // Trapdoor open / close — wait for isSecretCompartmentOpen confirmation
+    if (c === '/trapdoor_open' || c === '/trapdoor_close') {
+      armOptimistic(setOptimisticCompartment, compartmentClearTimer, c === '/trapdoor_open' ? true : false);
+      setPending(c);
+      await onCommand(c);
+      return;
+    }
+
+    // One-shot commands (flip, reset, status, sims) — 800 ms timer
     setPending(c);
     await onCommand(c);
     setTimeout(() => setPending(null), 800);
@@ -188,20 +260,20 @@ export default function VaultStatus({ state, connected, mode, canControl, onComm
 
       {/* Hero */}
       <div className={`p-5 sm:p-7 rounded-2xl border transition-all duration-500 relative overflow-hidden
-        ${isLocked ? 'bg-surface-container border-white/10' : 'bg-primary/10 border-primary/40'}`}>
+        ${displayLocked ? 'bg-surface-container border-white/10' : 'bg-primary/10 border-primary/40'}`}>
         <div className="flex items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <div className={`w-2 h-2 rounded-full ${isLocked ? 'bg-secondary' : 'bg-primary animate-pulse'}`} />
+              <div className={`w-2 h-2 rounded-full transition-colors duration-500 ${displayLocked ? 'bg-secondary' : 'bg-primary animate-pulse'}`} />
               <span className="text-[10px] font-mono uppercase tracking-widest text-text-variant">Aether Sentinel</span>
               <span className={`text-[9px] px-2 py-0.5 rounded-full font-mono uppercase tracking-wider border font-bold ${connected ? 'bg-secondary/10 border-secondary/30 text-secondary' : 'bg-orange-500/10 border-orange-500/30 text-orange-400'}`}>
                 {connected ? '● Live' : '◌ Sim'}
               </span>
             </div>
-            <h1 className={`font-manrope text-3xl sm:text-5xl font-black uppercase leading-none ${isLocked ? 'text-text-primary' : 'text-primary'}`}>
-              {isLocked ? 'Secured' : 'Unlocked'}
+            <h1 className={`font-manrope text-3xl sm:text-5xl font-black uppercase leading-none transition-colors duration-500 ${displayLocked ? 'text-text-primary' : 'text-primary'}`}>
+              {displayLocked ? 'Secured' : 'Unlocked'}
             </h1>
-            <p className="text-text-variant text-xs mt-1.5 font-light">{isLocked ? 'SW-420 & keypad active.' : 'Door open — auto-lock in 5s.'}</p>
+            <p className="text-text-variant text-xs mt-1.5 font-light">{displayLocked ? 'SW-420 & keypad active.' : 'Door open — auto-lock in 5s.'}</p>
           </div>
           {/* LCD */}
           <div className="flex-shrink-0 hidden sm:block">
@@ -234,24 +306,64 @@ export default function VaultStatus({ state, connected, mode, canControl, onComm
           <div>
             <p className="text-[9px] font-mono uppercase tracking-widest text-text-variant mb-2 px-0.5">⚠ Emergency</p>
             <div className="grid grid-cols-2 gap-2">
-              <BigBtn label={buzzerOn ? 'Silence Alarm' : 'Trigger Alarm'} sub={buzzerOn ? 'Buzzer active — tap to stop' : 'Remote buzzer activation'}
-                icon="campaign" color="tertiary" active={buzzerOn}
-                onClick={buzzerOn ? exec('/buzzer_off') : exec('/buzzer_on')}
+              <BigBtn label={displayBuzzer ? 'Silence Alarm' : 'Trigger Alarm'} sub={displayBuzzer ? 'Buzzer active — tap to stop' : 'Remote buzzer activation'}
+                icon="campaign" color="tertiary" active={displayBuzzer}
+                onClick={displayBuzzer ? exec('/buzzer_off') : exec('/buzzer_on')}
                 loading={isP('/buzzer_on') || isP('/buzzer_off')} />
               <BigBtn label="System Reset" sub="Clears all alerts" icon="restart_alt" color="secondary"
                 onClick={exec('/reset')} loading={isP('/reset')} />
             </div>
           </div>
 
-          {/* Door */}
+          {/* Door — toggle switch unit */}
           <div>
             <p className="text-[9px] font-mono uppercase tracking-widest text-text-variant mb-2 px-0.5">🚪 Main Door</p>
-            <div className="grid grid-cols-2 gap-2">
-              <BigBtn label="Unlock" sub="Open main servo" icon="lock_open" color="primary" active={!isLocked}
-                onClick={exec('/unlock')} loading={isP('/unlock')} />
-              <BigBtn label="Lock" sub="Close main servo" icon="lock" color="secondary" active={isLocked}
-                onClick={exec('/lock')} loading={isP('/lock')} />
-            </div>
+            {(() => {
+              const doorLoading = isP('/unlock') || isP('/lock');
+              const nextCmd = displayLocked ? '/unlock' : '/lock';
+              return (
+                <div className="flex items-center gap-4 px-5 py-4 rounded-xl border border-white/8 bg-surface-container">
+                  {/* Icon */}
+                  <span className={`material-symbols-outlined text-2xl flex-shrink-0 transition-colors duration-300 ${displayLocked ? 'text-secondary' : 'text-primary'}`}>
+                    {displayLocked ? 'lock' : 'lock_open'}
+                  </span>
+
+                  {/* Labels */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-black uppercase tracking-wider font-manrope text-text-primary">Main Door</p>
+                    <p className="text-[9px] font-mono text-text-variant mt-0.5">
+                      {doorLoading ? 'Sending command…' : displayLocked ? 'Servo 1 · Armed & Locked' : 'Servo 1 · Unlocked'}
+                    </p>
+                  </div>
+
+                  {/* State badge */}
+                  <span className={`text-[9px] font-mono uppercase tracking-wider px-2 py-0.5 rounded border font-bold flex-shrink-0 transition-all duration-300
+                    ${displayLocked ? 'text-secondary border-secondary/30 bg-secondary/10' : 'text-primary border-primary/30 bg-primary/10'}`}>
+                    {displayLocked ? 'Locked' : 'Open'}
+                  </span>
+
+                  {/* Toggle switch */}
+                  <button
+                    onClick={exec(nextCmd)}
+                    disabled={doorLoading}
+                    aria-label={displayLocked ? 'Unlock door' : 'Lock door'}
+                    className={`flex-shrink-0 relative w-14 h-7 rounded-full border-2 transition-all duration-300 focus:outline-none disabled:opacity-40
+                      ${displayLocked ? 'border-secondary/40 hover:border-secondary/70' : 'border-primary/40 hover:border-primary/70'}`}
+                  >
+                    {/* Track fill */}
+                    <span className={`absolute inset-0 rounded-full transition-all duration-300
+                      ${displayLocked ? 'bg-secondary/20' : 'bg-primary/25'}`} />
+                    {/* Thumb — slides left (locked/green) ↔ right (open/cyan) */}
+                    <span className={`absolute top-0.5 w-5 h-5 rounded-full shadow-lg transition-all duration-300 flex items-center justify-center
+                      ${displayLocked ? 'left-0.5 bg-secondary' : 'left-[calc(100%-1.375rem)] bg-primary'}`}>
+                      {doorLoading && (
+                        <span className="material-symbols-outlined text-[11px] text-black animate-spin leading-none">progress_activity</span>
+                      )}
+                    </span>
+                  </button>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Trapdoor */}
@@ -259,9 +371,9 @@ export default function VaultStatus({ state, connected, mode, canControl, onComm
             <p className="text-[9px] font-mono uppercase tracking-widest text-text-variant mb-2 px-0.5">📦 Compartment</p>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { label: 'Open', icon: 'inventory_2', c: '/trapdoor_open', color: 'primary', active: isSecretCompartmentOpen },
-                { label: 'Seal', icon: 'inventory',   c: '/trapdoor_close', color: 'secondary', active: !isSecretCompartmentOpen },
-                { label: 'Flip', icon: 'autorenew',  c: '/trapdoor_flip',  color: 'secondary', active: false },
+                { label: 'Open', icon: 'inventory_2', c: '/trapdoor_open',  color: 'primary',   active: displayCompartment },
+                { label: 'Seal', icon: 'inventory',   c: '/trapdoor_close', color: 'secondary', active: !displayCompartment },
+                { label: 'Flip', icon: 'autorenew',   c: '/trapdoor_flip',  color: 'secondary', active: false },
               ].map(b => (
                 <button key={b.c} onClick={exec(b.c)}
                   className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 font-bold transition-all
