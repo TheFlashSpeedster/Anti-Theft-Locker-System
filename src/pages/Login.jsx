@@ -12,7 +12,8 @@ export default function Login({ onLogin }) {
     setError('');
     // Simulate a brief auth delay for realism
     setTimeout(() => {
-      if (username === 'admin' && password === 'admin123') {
+      const storedPassword = localStorage.getItem('dashboard_password') || 'admin123';
+      if (username === 'admin' && password === storedPassword) {
         localStorage.setItem('auth', 'true');
         onLogin();
       } else {

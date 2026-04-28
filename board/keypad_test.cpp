@@ -16,12 +16,10 @@
 const byte ROWS = 4;
 const byte COLS = 4;
 
-char keys[ROWS][COLS] = {
-  {'1', '2', '3', 'A'},
-  {'4', '5', '6', 'B'},
-  {'7', '8', '9', 'C'},
-  {'*', '0', '#', 'D'}
-};
+char keys[ROWS][COLS] = {{'1', '2', '3', 'A'},
+                         {'4', '5', '6', 'B'},
+                         {'7', '8', '9', 'C'},
+                         {'*', '0', '#', 'D'}};
 
 // ── Pin mapping (matches your main code) ──────────────────
 byte rowPins[ROWS] = {13, 12, 14, 27};
@@ -32,19 +30,7 @@ Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 // ── Press counter for quick validation ────────────────────
 int pressCount = 0;
 
-void setup() {
-  Serial.begin(115200);
-  delay(500);
-  Serial.println("\n========================================");
-  Serial.println("  4x4 KEYPAD TEST — Press any key");
-  Serial.println("========================================");
-  Serial.println("Layout:");
-  Serial.println("  [1][2][3][A]");
-  Serial.println("  [4][5][6][B]");
-  Serial.println("  [7][8][9][C]");
-  Serial.println("  [*][0][#][D]");
-  Serial.println("----------------------------------------");
-}
+void setup() { Serial.begin(115200); }
 
 void loop() {
   char key = keypad.getKey();

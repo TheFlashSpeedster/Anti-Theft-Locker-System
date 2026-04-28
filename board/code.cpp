@@ -22,17 +22,14 @@ const char *WIFI_PASSWORD = "poco1234";
 const String FIREBASE_HOST = "locker-system-02-default-rtdb.firebaseio.com";
 const String FIREBASE_SECRET = "YtyGo92r0BzPZOyCPeHRXve6xj8T98UEhdPpyrUU";
 
-// ── Security ──────────────────────────────────────────────
-const String CORRECT_PASSWORD = "2580";
+// ── Security (loaded from Firebase at runtime) ───────────
+String CORRECT_PASSWORD = "2580";     // default; overwritten by fetchConfig()
 
-// ── Telegram Bot (notifications only — NOT commands) ──────
-// 1. Open Telegram → search @BotFather → /newbot → copy token
-// 2. Send any message to your bot, then open:
-//    https://api.telegram.org/bot<TOKEN>/getUpdates
-//    copy the "id" from "chat":{"id":XXXXXXX}
-const String TELEGRAM_TOKEN =
-    "8510354203:AAGs0hyHpmpxIRAoA1gjj6-YbP8vMG_N_8c"; // ← replace
-const String TELEGRAM_CHAT_ID = "5524391658";         // ← replace
+// ── Telegram Bot (loaded from Firebase at runtime) ────────
+// Configure via the web dashboard Settings tab.
+// Stored at: locker/config/telegram/{botToken, chatId}
+String TELEGRAM_TOKEN   = "";         // fetched from Firebase on boot
+String TELEGRAM_CHAT_ID = "";         // fetched from Firebase on boot
 
 // ── Servo positions ───────────────────────────────────────
 const int SERVO1_LOCKED = 0;
@@ -84,6 +81,8 @@ unsigned long lastFirebasePush = 0;
 unsigned long lastFirebaseCmd = 0;
 unsigned long lastNtpRetry = 0;
 long lastCommandTs = 0;
+unsigned long lastConfigFetch = 0;
+const int CONFIG_FETCH_MS = 60000;  // re-fetch config every 60 s
 String enteredPassword = "";
 // No round-robin slot needed — commands and heartbeat run on independent timers
 
@@ -99,6 +98,7 @@ void flipTrapdoor();
 void resetAlert();
 void handleCommand(String text);
 void processKey(char key);
+void fetchConfig();
 
 // Poll the keypad once and immediately process any key press.
 // Safe to call in the main loop and before/after blocking HTTP ops
@@ -116,9 +116,57 @@ void queueTelegram(String msg) {
 
 // Send queued Telegram message if one is waiting.
 // Retries on next loop if WiFi is down or HTTP fails.
+// ===================== FETCH CONFIG FROM FIREBASE ==========
+// Reads locker/config/{password, telegram} and updates runtime variables.
+// Called once at boot and every CONFIG_FETCH_MS thereafter.
+void fetchConfig() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  HTTPClient http;
+  String url = "https://" + FIREBASE_HOST + "/locker/config.json?auth=" + FIREBASE_SECRET;
+  http.begin(url);
+  http.setTimeout(2000);
+  int code = http.GET();
+  if (code == 200) {
+    String payload = http.getString();
+    http.end();
+    DynamicJsonDocument doc(512);
+    if (!deserializeJson(doc, payload)) {
+      // Locker PIN
+      if (doc.containsKey("password") && !doc["password"].isNull()) {
+        String p = doc["password"].as<String>();
+        if (p.length() >= 4) {
+          CORRECT_PASSWORD = p;
+          Serial.println("[CFG] Locker PIN updated from Firebase.");
+        }
+      }
+      // Telegram credentials
+      if (doc.containsKey("telegram") && doc["telegram"].is<JsonObject>()) {
+        JsonObject tg = doc["telegram"].as<JsonObject>();
+        if (tg.containsKey("botToken") && !tg["botToken"].isNull()) {
+          String tok = tg["botToken"].as<String>();
+          if (tok.length() > 10) {
+            TELEGRAM_TOKEN = tok;
+            Serial.println("[CFG] Telegram token updated from Firebase.");
+          }
+        }
+        if (tg.containsKey("chatId") && !tg["chatId"].isNull()) {
+          String cid = tg["chatId"].as<String>();
+          if (cid.length() > 0) {
+            TELEGRAM_CHAT_ID = cid;
+            Serial.println("[CFG] Telegram chat ID updated from Firebase.");
+          }
+        }
+      }
+    }
+  } else {
+    http.end();
+    Serial.printf("[CFG] fetchConfig failed (HTTP %d)\n", code);
+  }
+}
+
 void sendTelegramIfQueued() {
   if (telegramQueue.isEmpty()) return;
-  if (TELEGRAM_TOKEN == "YOUR_BOT_TOKEN_HERE") return; // not configured
+  if (TELEGRAM_TOKEN.isEmpty()) return; // not configured yet
   if (WiFi.status() != WL_CONNECTED) return;           // retry next loop — DON'T clear
 
   // Small settle delay after heavy Firebase activity to let TCP stack recover
@@ -318,21 +366,54 @@ void openLocker() {
   Serial.println("[EVENT] Door opened via keypad");
   pushStateToFirebase("Door opened via keypad");
   pushLogToFirebase("success", "Access granted — door opened via keypad");
-  delay(AUTO_LOCK_DELAY);
-  servo1.write(SERVO1_LOCKED);
-  lockerOpen = false;
-  failedAttempts = 0;
+
+  // ── Prompt user to press A to lock ────────────────────────
+  delay(1200); // brief "ACCESS GRANTED" display
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("  Locker Locked ");
+  lcd.print(" Door is Open   ");
   lcd.setCursor(0, 1);
-  lcd.print("  Enter Password");
-  delay(1500);
-  showIdleScreen();
-  Serial.println("[EVENT] Door auto-locked after timeout");
-  pushStateToFirebase("Door auto-locked after opening");
-  pushLogToFirebase("info", "Door auto-locked after timeout");
+  lcd.print(" Press A to Lock");
+  Serial.println("[EVENT] Waiting for A key to lock...");
+
+  // ── Wait: A on keypad OR remote /lock from dashboard ──────
+  unsigned long lastCmdCheck = millis();
+  bool remotelyLocked = false;
+  while (true) {
+    char k = keypad.getKey();
+    if (k == 'A') break;                       // physical lock key
+
+    // Poll Firebase commands every 500ms while door is open
+    if (millis() - lastCmdCheck > 500) {
+      lastCmdCheck = millis();
+      checkFirebaseCommand();                  // handles /lock → sets lockerOpen=false
+      if (!lockerOpen) { remotelyLocked = true; break; }
+    }
+    delay(50);
+  }
+
+  // ── Lock the servo (skip if remote /lock already did it) ──
+  if (!remotelyLocked) {
+    servo1.write(SERVO1_LOCKED);
+    lockerOpen = false;
+    failedAttempts = 0;
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("  Locker Locked ");
+    lcd.setCursor(0, 1);
+    lcd.print("                ");
+    delay(1200);
+    showIdleScreen();
+    Serial.println("[EVENT] Door locked by A key");
+    pushStateToFirebase("Door locked via keypad (A)");
+    pushLogToFirebase("info", "Door locked via keypad (A)");
+  } else {
+    // Remote /lock already updated servo + LCD + Firebase via handleCommand()
+    failedAttempts = 0;
+    Serial.println("[EVENT] Door locked remotely while open");
+  }
 }
+
 
 // ===================== SECURITY ALERT ======================
 void triggerSecurityAlert(String reason) {
@@ -493,10 +574,19 @@ void handleCommand(String text) {
 }
 
 // ===================== PROCESS KEYPAD KEY ==================
+// Key map:
+//   *        → Clear / cancel entry
+//   0–9      → Digit input
+//   D        → Backspace (Delete last digit)
+//   #        → Submit PIN (Enter/Confirm)
+//   A        → Lock door (only active while door is open)
+//   B        → Reset alert / silence buzzer
+//   C        → (unused — reserved)
 void processKey(char key) {
   Serial.print("[KEY] ");
   Serial.println(key);
 
+  // ─ * : Clear entry ─────────────────────────────────────────────
   if (key == '*') {
     enteredPassword = "";
     lcd.clear();
@@ -506,7 +596,18 @@ void processKey(char key) {
     return;
   }
 
+  // ─ B : Reset alert / silence buzzer ────────────────────────
   if (key == 'B') {
+    if (alertTriggered) {
+      resetAlert();
+      Serial.println("[KEY] Alert reset via B key");
+    }
+    enteredPassword = "";
+    return;
+  }
+
+  // ─ # : Submit PIN ─────────────────────────────────────────
+  if (key == '#') {
     lcd.clear();
     lcd.setCursor(0, 0);
     if (enteredPassword == CORRECT_PASSWORD) {
@@ -522,13 +623,10 @@ void processKey(char key) {
       lcd.print("Attempt ");
       lcd.print(failedAttempts);
       lcd.print("/3      ");
-      Serial.println("[KEY] Wrong PIN — attempt " + String(failedAttempts) +
-                     "/3");
-      pushStateToFirebase("Wrong password attempt " + String(failedAttempts) +
-                          "/3");
-      pushLogToFirebase("warning",
-                        "Wrong PIN — attempt " + String(failedAttempts) + "/3");
-      delay(500); // show error briefly then clear quickly
+      Serial.println("[KEY] Wrong PIN — attempt " + String(failedAttempts) + "/3");
+      pushStateToFirebase("Wrong password attempt " + String(failedAttempts) + "/3");
+      pushLogToFirebase("warning", "Wrong PIN — attempt " + String(failedAttempts) + "/3");
+      delay(500);
       if (failedAttempts >= 3) {
         triggerSecurityAlert("3x Wrong Pass!");
         failedAttempts = 0;
@@ -543,10 +641,12 @@ void processKey(char key) {
     return;
   }
 
+  // ─ D : Backspace ───────────────────────────────────────────
   if (key == 'D') {
     if (enteredPassword.length() > 0)
       enteredPassword.remove(enteredPassword.length() - 1);
-  } else if (key != 'A' && key != 'C') {
+  } else if (key != 'A' && key != 'B' && key != 'C') {
+    // ─ 0–9 : Digit accumulation (A/B/C not digits) ─────────────
     enteredPassword += key;
   }
 
@@ -602,6 +702,13 @@ void setup() {
 
     // ── Immediate boot signal (before NTP so website shows Live right away)
     pushStateToFirebase("Booting...");
+
+    // ── Fetch config from Firebase (PIN + Telegram creds)
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print(" Loading Config ");
+    fetchConfig();
+    lastConfigFetch = millis();
 
     // Quick NTP — max 3s, then continue
     lcd.clear();
@@ -659,7 +766,13 @@ void loop() {
     retryNtpBackground();
   }
 
-  // ---- 4. FIREBASE: Commands — independent timer, 500ms interval ----
+  // ---- 4a. CONFIG REFRESH — every 60s ----
+  if (millis() - lastConfigFetch > CONFIG_FETCH_MS) {
+    lastConfigFetch = millis();
+    fetchConfig();
+  }
+
+  // ---- 4b. FIREBASE: Commands — independent timer, 500ms interval ----
   //   Commands are decoupled from the heartbeat so they are never blocked
   //   waiting for the push slot. Max web-to-hardware latency ≈ 500ms.
   if (millis() - lastFirebaseCmd > FIREBASE_CMD_MS) {
