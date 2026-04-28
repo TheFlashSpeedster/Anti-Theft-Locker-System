@@ -45,7 +45,7 @@ const int VIBRATION_COOLDOWN = 10000;
 const int STARTUP_GRACE_MS = 8000;
 const int FIREBASE_PUSH_MS = 8000; // Heartbeat every 8s
 const int FIREBASE_CMD_MS =
-    500; // Poll web commands every 500ms (fast response)
+    1000; // Poll web commands every 1s — commands are deleted after exec so polls return null instantly
 
 // ── Pin definitions ───────────────────────────────────────
 #define SERVO1_PIN 18
@@ -295,36 +295,51 @@ void pushStateToFirebase(String lastAction) {
 }
 
 void checkFirebaseCommand() {
-  if (WiFi.status() != WL_CONNECTED)
-    return;
+  if (WiFi.status() != WL_CONNECTED) return;
+
   HTTPClient http;
-  String url = "https://" + FIREBASE_HOST +
-               "/locker/command.json?auth=" + FIREBASE_SECRET;
+  String url = "https://" + FIREBASE_HOST + "/locker/command.json?auth=" + FIREBASE_SECRET;
   http.begin(url);
-  http.setTimeout(1000); // tight timeout for fast response
+  http.setTimeout(300); // short timeout — keeps keypad responsive
   int code = http.GET();
-  if (code != 200) {
-    http.end();
-    return;
-  }
+  if (code != 200) { http.end(); return; }
+
   String payload = http.getString();
   http.end();
-  if (payload == "null" || payload.isEmpty())
-    return;
+
+  // No pending command — return immediately (fast path after deletion)
+  if (payload == "null" || payload.isEmpty()) return;
+
   DynamicJsonDocument doc(256);
-  if (deserializeJson(doc, payload))
-    return;
-  long ts = doc["ts"].as<long>();
+  if (deserializeJson(doc, payload)) return;
+
+  long ts  = doc["ts"].as<long>();
   String cmd = doc["cmd"].as<String>();
-  Serial.printf("[CMD] received ts=%ld lastTs=%ld cmd=%s\n", ts, lastCommandTs,
-                cmd.c_str());
+  Serial.printf("[CMD] ts=%ld lastTs=%ld cmd=%s\n", ts, lastCommandTs, cmd.c_str());
+
   if (ts <= lastCommandTs) {
-    Serial.println("[CMD] Skipped — duplicate");
+    // Stale command still in Firebase — delete it to stop log spam
+    Serial.println("[CMD] Stale — deleting from Firebase");
+    HTTPClient httpDel;
+    httpDel.begin(url);
+    httpDel.setTimeout(300);
+    httpDel.sendRequest("DELETE");
+    httpDel.end();
     return;
   }
+
+  // New command — execute then immediately delete so it won't re-fire
   lastCommandTs = ts;
   Serial.println("[WEB CMD] Executing: " + cmd);
   handleCommand(cmd);
+
+  // Delete the executed command node from Firebase
+  HTTPClient httpDel;
+  httpDel.begin(url);
+  httpDel.setTimeout(300);
+  httpDel.sendRequest("DELETE");
+  httpDel.end();
+  Serial.println("[CMD] Cleared from Firebase");
 }
 
 // ===================== SYSTEM SCREENS ======================
