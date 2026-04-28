@@ -93,6 +93,14 @@ String enteredPassword = "";
 // ── Telegram single-slot queue (non-blocking) ─────────────
 String telegramQueue = "";  // empty = nothing pending
 
+// ── Deferred Firebase push (set in processKey, sent in loop) ─
+// Keeps the keypad & LCD fully responsive — no HTTP blocking in processKey.
+bool   pendingStatePush = false;
+String pendingAction    = "";
+bool   pendingLogPush   = false;
+String pendingLogType   = "";
+String pendingLogMsg    = "";
+
 // ===================== FORWARD DECLARES ====================
 void showIdleScreen();
 void flipTrapdoor();
@@ -233,7 +241,7 @@ void pushLogToFirebase(String type, String message) {
   String url = "https://" + FIREBASE_HOST + "/locker/logs/" + String(millis()) + ".json?auth=" + FIREBASE_SECRET;
   HTTPClient http;
   http.begin(url);
-  http.setTimeout(1500);
+  http.setTimeout(400);  // short — called from loop, not processKey
   http.addHeader("Content-Type", "application/json");
   http.PUT(body);
   http.end();
@@ -256,7 +264,7 @@ void pushStateToFirebase(String lastAction) {
 
   HTTPClient http;
   http.begin("https://" + FIREBASE_HOST + "/locker/status.json?auth=" + FIREBASE_SECRET);
-  http.setTimeout(1000);
+  http.setTimeout(400);  // short — called from loop, not processKey
   http.addHeader("Content-Type", "application/json");
   http.PATCH(body);
   http.end();
@@ -532,8 +540,12 @@ void processKey(char key) {
       lcd.setCursor(0, 1);
       lcd.print("Attempt "); lcd.print(failedAttempts); lcd.print("/3      ");
       Serial.println("[KEY] Wrong PIN — attempt " + String(failedAttempts) + "/3");
-      pushStateToFirebase("Wrong password attempt " + String(failedAttempts) + "/3");
-      pushLogToFirebase("warning", "Wrong PIN — attempt " + String(failedAttempts) + "/3");
+      // Defer Firebase push — keeps LCD & keypad responsive
+      pendingAction    = "Wrong password attempt " + String(failedAttempts) + "/3";
+      pendingStatePush = true;
+      pendingLogType   = "warning";
+      pendingLogMsg    = "Wrong PIN — attempt " + String(failedAttempts) + "/3";
+      pendingLogPush   = true;
       delay(500);
       if (failedAttempts >= 3) {
         triggerSecurityAlert("3x Wrong Pass!");
@@ -655,6 +667,16 @@ void loop() {
     drainKeypad();
     checkFirebaseCommand();
     drainKeypad();
+  }
+
+  // Deferred keypad-event push (instant key response, async Firebase)
+  if (pendingStatePush) {
+    pendingStatePush = false;
+    pushStateToFirebase(pendingAction);
+  }
+  if (pendingLogPush) {
+    pendingLogPush = false;
+    pushLogToFirebase(pendingLogType, pendingLogMsg);
   }
 
   // Firebase heartbeat every 8 s
