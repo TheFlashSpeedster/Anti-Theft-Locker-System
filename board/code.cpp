@@ -116,6 +116,14 @@ void drainKeypad() {
   if (k) processKey(k);
 }
 
+void waitWithKeypad(unsigned long ms) {
+  unsigned long start = millis();
+  while (millis() - start < ms) {
+    drainKeypad();
+    delay(1);
+  }
+}
+
 void queueTelegram(String msg) {
   if (telegramQueue.isEmpty())
     telegramQueue = msg;
@@ -319,12 +327,12 @@ void flipTrapdoor() {
   lcd.clear();
   lcd.setCursor(0, 0); lcd.print(" Securing Items ");
   lcd.setCursor(0, 1); lcd.print(" Chamber Active ");
-  delay(TRAPDOOR_HOLD_MS);
+  waitWithKeypad(TRAPDOOR_HOLD_MS);
   servo2.write(SERVO2_CLOSED);
   lcd.clear();
   lcd.setCursor(0, 0); lcd.print(" Items Secured! ");
   lcd.setCursor(0, 1); lcd.print(" Chamber Sealed ");
-  delay(1500);
+  waitWithKeypad(1500);
 }
 
 // ===================== LOCKER OPEN =========================
@@ -338,7 +346,8 @@ void openLocker() {
   pushStateToFirebase("Door opened via keypad");
   pushLogToFirebase("success", "Access granted — door opened via keypad");
 
-  delay(1200);
+  waitWithKeypad(1200);
+
   lcd.clear();
   lcd.setCursor(0, 0); lcd.print(" Door is Open   ");
   lcd.setCursor(0, 1); lcd.print(" Press A to Lock");
@@ -348,13 +357,16 @@ void openLocker() {
   unsigned long lastCmdCheck = millis();
   bool remotelyLocked = false;
   while (true) {
-    if (keypad.getKey() == 'A') break;
+    char k = keypad.getKey();
+    if (k == 'A') break;
+
     if (millis() - lastCmdCheck > 500) {
       lastCmdCheck = millis();
       checkFirebaseCommand();
       if (!lockerOpen) { remotelyLocked = true; break; }
     }
-    delay(50);
+
+    delay(1);
   }
 
   if (!remotelyLocked) {
@@ -364,7 +376,7 @@ void openLocker() {
     lcd.clear();
     lcd.setCursor(0, 0); lcd.print("  Locker Locked ");
     lcd.setCursor(0, 1); lcd.print("                ");
-    delay(1200);
+    waitWithKeypad(1200);
     showIdleScreen();
     Serial.println("[EVENT] Door locked by A key");
     pushStateToFirebase("Door locked via keypad (A)");
@@ -423,7 +435,7 @@ void resetAlert() {
   digitalWrite(BUZZER_PIN, LOW);
   lcd.clear();
   lcd.setCursor(0, 0); lcd.print(" System Reset   ");
-  delay(1500);
+  waitWithKeypad(1500);
   showIdleScreen();
   Serial.println("[EVENT] System RESET — all alerts cleared");
   queueTelegram("✅ <b>Alert Cleared</b>\nAether Sentinel reset. System secure.");
@@ -450,7 +462,7 @@ void handleCommand(String text) {
     lcd.clear();
     lcd.setCursor(0, 0); lcd.print(" Remote LOCK    ");
     lcd.setCursor(0, 1); lcd.print(" Door Locked!   ");
-    delay(1500);
+    waitWithKeypad(1500);
     showIdleScreen();
     action = "Door LOCKED via web";
 
@@ -466,7 +478,7 @@ void handleCommand(String text) {
     lcd.clear();
     lcd.setCursor(0, 0); lcd.print(" Trapdoor CLOSED");
     lcd.setCursor(0, 1); lcd.print(" Manual Control ");
-    delay(1500);
+    waitWithKeypad(1500);
     showIdleScreen();
     action = "Trapdoor CLOSED manually";
 
@@ -540,13 +552,16 @@ void processKey(char key) {
       lcd.setCursor(0, 1);
       lcd.print("Attempt "); lcd.print(failedAttempts); lcd.print("/3      ");
       Serial.println("[KEY] Wrong PIN — attempt " + String(failedAttempts) + "/3");
+
       // Defer Firebase push — keeps LCD & keypad responsive
       pendingAction    = "Wrong password attempt " + String(failedAttempts) + "/3";
       pendingStatePush = true;
       pendingLogType   = "warning";
       pendingLogMsg    = "Wrong PIN — attempt " + String(failedAttempts) + "/3";
       pendingLogPush   = true;
-      delay(500);
+
+      waitWithKeypad(500);
+
       if (failedAttempts >= 3) {
         triggerSecurityAlert("3x Wrong Pass!");
         failedAttempts = 0;
@@ -636,7 +651,10 @@ void loop() {
   if (millis() - systemStartTime > STARTUP_GRACE_MS) {
     if (digitalRead(VIBRATION_PIN) == HIGH) {
       int highCount = 0;
-      for (int i = 0; i < 5; i++) { delay(20); if (digitalRead(VIBRATION_PIN) == HIGH) highCount++; }
+      for (int i = 0; i < 5; i++) {
+        waitWithKeypad(20);
+        if (digitalRead(VIBRATION_PIN) == HIGH) highCount++;
+      }
       if (highCount == 5) {
         unsigned long now = millis();
         if (!vibAlertTriggered || (now - vibLastTrigger > VIBRATION_COOLDOWN)) {
