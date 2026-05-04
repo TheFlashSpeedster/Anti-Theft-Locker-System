@@ -41,7 +41,7 @@ const int TRAPDOOR_HOLD_MS = 2000;
 const int VIBRATION_COOLDOWN = 10000;
 const int STARTUP_GRACE_MS   = 8000;
 const int FIREBASE_PUSH_MS   = 8000;   // heartbeat every 8 s
-const int FIREBASE_CMD_MS    = 1000;   // command poll every 1 s (null returns are instant after delete)
+const int FIREBASE_CMD_MS    = 1000;   // command poll every 1 s
 const int CONFIG_FETCH_MS    = 60000;  // re-fetch PIN + Telegram creds every 60 s
 const int TELEGRAM_TIMEOUT   = 3000;
 
@@ -80,6 +80,7 @@ int  failedAttempts    = 0;
 bool lockerOpen        = false;
 bool alertTriggered    = false;
 bool vibAlertTriggered = false;
+bool vibArmed          = true;   // re-arm only after vibration pin returns LOW
 bool ntpSynced         = false;
 unsigned long vibLastTrigger  = 0;
 unsigned long systemStartTime = 0;
@@ -125,8 +126,9 @@ void waitWithKeypad(unsigned long ms) {
 }
 
 void queueTelegram(String msg) {
-  if (telegramQueue.isEmpty())
+  if (telegramQueue.isEmpty()) {
     telegramQueue = msg;
+  }
 }
 
 // Send an HTTP DELETE to the given Firebase URL (used to clear executed commands)
@@ -139,13 +141,14 @@ void firebaseDelete(const String &url) {
 }
 
 // ===================== FETCH CONFIG FROM FIREBASE ==========
-// Reads locker/config/{password, telegram} and updates runtime variables.
 void fetchConfig() {
   if (WiFi.status() != WL_CONNECTED) return;
+
   HTTPClient http;
   String url = "https://" + FIREBASE_HOST + "/locker/config.json?auth=" + FIREBASE_SECRET;
   http.begin(url);
   http.setTimeout(2000);
+
   int code = http.GET();
   String payload = (code == 200) ? http.getString() : "";
   http.end();
@@ -171,7 +174,7 @@ void fetchConfig() {
     String tok = tg["botToken"] | "";
     String cid = tg["chatId"]   | "";
     if (tok.length() > 10) { TELEGRAM_TOKEN   = tok; Serial.println("[CFG] Telegram token updated."); }
-    if (cid.length() >  0) { TELEGRAM_CHAT_ID = cid; Serial.println("[CFG] Telegram chat ID updated."); }
+    if (cid.length() > 0)   { TELEGRAM_CHAT_ID = cid; Serial.println("[CFG] Telegram chat ID updated."); }
   }
 }
 
@@ -208,9 +211,13 @@ void syncTimeQuick() {
   configTime(19800, 0, "time.google.com", "pool.ntp.org", "time.cloudflare.com");
   struct tm t;
   int retry = 0;
-  while (!getLocalTime(&t) && retry++ < 3) { delay(1000); Serial.print("."); }
+  while (!getLocalTime(&t) && retry++ < 3) {
+    delay(1000);
+    Serial.print(".");
+  }
   if (getLocalTime(&t)) {
-    char buf[30]; strftime(buf, sizeof(buf), "%d/%m/%Y %H:%M:%S", &t);
+    char buf[30];
+    strftime(buf, sizeof(buf), "%d/%m/%Y %H:%M:%S", &t);
     Serial.println("\nNTP synced: " + String(buf));
     ntpSynced = true;
   } else {
@@ -219,10 +226,10 @@ void syncTimeQuick() {
 }
 
 void retryNtpBackground() {
-  // configTime already called at boot; just check if time is available yet
   struct tm t;
   if (getLocalTime(&t)) {
-    char buf[30]; strftime(buf, sizeof(buf), "%d/%m/%Y %H:%M:%S", &t);
+    char buf[30];
+    strftime(buf, sizeof(buf), "%d/%m/%Y %H:%M:%S", &t);
     Serial.println("[NTP] Background sync OK: " + String(buf));
     ntpSynced = true;
   }
@@ -239,17 +246,20 @@ String getCurrentTime() {
 // ===================== FIREBASE HELPERS ====================
 void pushLogToFirebase(String type, String message) {
   if (WiFi.status() != WL_CONNECTED) return;
+
   DynamicJsonDocument doc(256);
   doc["type"]      = type;
   doc["message"]   = message;
   doc["timestamp"] = getCurrentTime();
   doc["ts"]        = millis();
-  String body; serializeJson(doc, body);
+
+  String body;
+  serializeJson(doc, body);
 
   String url = "https://" + FIREBASE_HOST + "/locker/logs/" + String(millis()) + ".json?auth=" + FIREBASE_SECRET;
   HTTPClient http;
   http.begin(url);
-  http.setTimeout(400);  // short — called from loop, not processKey
+  http.setTimeout(400);
   http.addHeader("Content-Type", "application/json");
   http.PUT(body);
   http.end();
@@ -257,22 +267,25 @@ void pushLogToFirebase(String type, String message) {
 
 void pushStateToFirebase(String lastAction) {
   if (WiFi.status() != WL_CONNECTED) return;
+
   DynamicJsonDocument doc(512);
-  doc["isLocked"]               = !lockerOpen;
-  doc["isSecretCompartmentOpen"]= (servo2.read() == SERVO2_OPEN);
-  doc["failedAttempts"]         = failedAttempts;
-  doc["buzzerOn"]               = (digitalRead(BUZZER_PIN) == HIGH);
-  doc["isBreached"]             = alertTriggered;
-  doc["vibrationDetected"]      = vibAlertTriggered;
-  doc["lastAction"]             = lastAction;
-  doc["lastSeen"]               = getCurrentTime();
-  doc["ts"]                     = ntpSynced ? (long)time(nullptr) : 0L;
-  doc["uptimeMs"]               = (long)millis();
-  String body; serializeJson(doc, body);
+  doc["isLocked"]                = !lockerOpen;
+  doc["isSecretCompartmentOpen"] = (servo2.read() == SERVO2_OPEN);
+  doc["failedAttempts"]          = failedAttempts;
+  doc["buzzerOn"]                = (digitalRead(BUZZER_PIN) == HIGH);
+  doc["isBreached"]              = alertTriggered;
+  doc["vibrationDetected"]       = vibAlertTriggered;
+  doc["lastAction"]              = lastAction;
+  doc["lastSeen"]                = getCurrentTime();
+  doc["ts"]                      = ntpSynced ? (long)time(nullptr) : 0L;
+  doc["uptimeMs"]                = (long)millis();
+
+  String body;
+  serializeJson(doc, body);
 
   HTTPClient http;
   http.begin("https://" + FIREBASE_HOST + "/locker/status.json?auth=" + FIREBASE_SECRET);
-  http.setTimeout(400);  // short — called from loop, not processKey
+  http.setTimeout(400);
   http.addHeader("Content-Type", "application/json");
   http.PATCH(body);
   http.end();
@@ -285,11 +298,16 @@ void checkFirebaseCommand() {
   HTTPClient http;
   http.begin(url);
   http.setTimeout(300);
+
   int code = http.GET();
-  if (code != 200) { http.end(); return; }
+  if (code != 200) {
+    http.end();
+    return;
+  }
 
   String payload = http.getString();
   http.end();
+
   if (payload == "null" || payload.isEmpty()) return;
 
   DynamicJsonDocument doc(256);
@@ -299,14 +317,12 @@ void checkFirebaseCommand() {
   String cmd = doc["cmd"].as<String>();
   Serial.printf("[CMD] ts=%ld lastTs=%ld cmd=%s\n", ts, lastCommandTs, cmd.c_str());
 
-  // Stale or duplicate — delete and bail
   if (ts <= lastCommandTs) {
     Serial.println("[CMD] Stale — deleting from Firebase");
     firebaseDelete(url);
     return;
   }
 
-  // New command — execute, then delete to prevent re-fire on reboot
   lastCommandTs = ts;
   Serial.println("[WEB CMD] " + cmd);
   handleCommand(cmd);
@@ -328,6 +344,7 @@ void flipTrapdoor() {
   lcd.setCursor(0, 0); lcd.print(" Securing Items ");
   lcd.setCursor(0, 1); lcd.print(" Chamber Active ");
   waitWithKeypad(TRAPDOOR_HOLD_MS);
+
   servo2.write(SERVO2_CLOSED);
   lcd.clear();
   lcd.setCursor(0, 0); lcd.print(" Items Secured! ");
@@ -339,6 +356,7 @@ void flipTrapdoor() {
 void openLocker() {
   lockerOpen = true;
   servo1.write(SERVO1_UNLOCKED);
+
   lcd.clear();
   lcd.setCursor(0, 0); lcd.print("  ACCESS GRANTED");
   lcd.setCursor(0, 1); lcd.print("  Locker Opened!");
@@ -353,9 +371,9 @@ void openLocker() {
   lcd.setCursor(0, 1); lcd.print(" Press A to Lock");
   Serial.println("[EVENT] Waiting for A key to lock...");
 
-  // Wait for A (physical) or remote /lock (Firebase)
   unsigned long lastCmdCheck = millis();
   bool remotelyLocked = false;
+
   while (true) {
     char k = keypad.getKey();
     if (k == 'A') break;
@@ -363,7 +381,10 @@ void openLocker() {
     if (millis() - lastCmdCheck > 500) {
       lastCmdCheck = millis();
       checkFirebaseCommand();
-      if (!lockerOpen) { remotelyLocked = true; break; }
+      if (!lockerOpen) {
+        remotelyLocked = true;
+        break;
+      }
     }
 
     delay(1);
@@ -373,11 +394,13 @@ void openLocker() {
     servo1.write(SERVO1_LOCKED);
     lockerOpen = false;
     failedAttempts = 0;
+
     lcd.clear();
     lcd.setCursor(0, 0); lcd.print("  Locker Locked ");
     lcd.setCursor(0, 1); lcd.print("                ");
     waitWithKeypad(1200);
     showIdleScreen();
+
     Serial.println("[EVENT] Door locked by A key");
     pushStateToFirebase("Door locked via keypad (A)");
     pushLogToFirebase("info", "Door locked via keypad (A)");
@@ -390,8 +413,10 @@ void openLocker() {
 // ===================== SECURITY ALERT ======================
 void triggerSecurityAlert(String reason) {
   if (alertTriggered) return;
+
   alertTriggered = true;
   digitalWrite(BUZZER_PIN, HIGH);
+
   lcd.clear();
   lcd.setCursor(0, 0); lcd.print(" !! ALERT !!    ");
   lcd.setCursor(0, 1); lcd.print(reason.substring(0, 16));
@@ -417,10 +442,13 @@ void triggerSecurityAlert(String reason) {
                "⏰ Buzzer active | Trapdoor deployed\n"
                "Reset via web or correct PIN.";
   }
+
   queueTelegram(tgramMsg);
   pushStateToFirebase("ALERT: " + reason);
   pushLogToFirebase("critical", "ALERT: " + reason + " — buzzer latched, reset required");
+
   flipTrapdoor();
+
   lcd.clear();
   lcd.setCursor(0, 0); lcd.print(" !! ALERT !!    ");
   lcd.setCursor(0, 1); lcd.print(reason.substring(0, 16));
@@ -430,13 +458,18 @@ void triggerSecurityAlert(String reason) {
 void resetAlert() {
   alertTriggered    = false;
   vibAlertTriggered = false;
+  vibArmed          = false;   // require sensor LOW before next trigger
+  vibLastTrigger    = millis();
   failedAttempts    = 0;
+
   servo2.write(SERVO2_CLOSED);
   digitalWrite(BUZZER_PIN, LOW);
+
   lcd.clear();
   lcd.setCursor(0, 0); lcd.print(" System Reset   ");
   waitWithKeypad(1500);
   showIdleScreen();
+
   Serial.println("[EVENT] System RESET — all alerts cleared");
   queueTelegram("✅ <b>Alert Cleared</b>\nAether Sentinel reset. System secure.");
   pushStateToFirebase("System RESET");
@@ -507,7 +540,7 @@ void handleCommand(String text) {
 
   } else if (text == "/reset") {
     resetAlert();
-    return; // resetAlert already pushes state + log
+    return;
 
   } else if (text == "/status") {
     action = "Status refreshed at " + getCurrentTime();
@@ -523,9 +556,10 @@ void handleCommand(String text) {
 
 // ===================== PROCESS KEYPAD KEY ==================
 void processKey(char key) {
-  Serial.print("[KEY] "); Serial.println(key);
+  Serial.print("[KEY] ");
+  Serial.println(key);
 
-  if (key == '*') {                          // Clear
+  if (key == '*') {
     enteredPassword = "";
     lcd.clear();
     lcd.setCursor(0, 0); lcd.print("Enter Password: ");
@@ -533,14 +567,15 @@ void processKey(char key) {
     return;
   }
 
-  if (key == 'B') {                          // Reset alert
-    if (alertTriggered) resetAlert();
+  if (key == 'B') {
+    if (alertTriggered || vibAlertTriggered) resetAlert();
     enteredPassword = "";
     return;
   }
 
-  if (key == '#') {                          // Submit PIN
-    lcd.clear(); lcd.setCursor(0, 0);
+  if (key == '#') {
+    lcd.clear();
+    lcd.setCursor(0, 0);
     if (enteredPassword == CORRECT_PASSWORD) {
       failedAttempts    = 0;
       vibAlertTriggered = false;
@@ -550,11 +585,12 @@ void processKey(char key) {
       failedAttempts++;
       lcd.print("Wrong Password! ");
       lcd.setCursor(0, 1);
-      lcd.print("Attempt "); lcd.print(failedAttempts); lcd.print("/3      ");
+      lcd.print("Attempt ");
+      lcd.print(failedAttempts);
+      lcd.print("/3      ");
       Serial.println("[KEY] Wrong PIN — attempt " + String(failedAttempts) + "/3");
 
-      // Defer Firebase push — keeps LCD & keypad responsive
-      pendingAction    = "Wrong password attempt " + String(failedAttempts) + "/3";
+      pendingAction   = "Wrong password attempt " + String(failedAttempts) + "/3";
       pendingStatePush = true;
       pendingLogType   = "warning";
       pendingLogMsg    = "Wrong PIN — attempt " + String(failedAttempts) + "/3";
@@ -575,14 +611,14 @@ void processKey(char key) {
     return;
   }
 
-  if (key == 'D') {                          // Backspace
-    if (enteredPassword.length() > 0)
+  if (key == 'D') {
+    if (enteredPassword.length() > 0) {
       enteredPassword.remove(enteredPassword.length() - 1);
-  } else if (key != 'A' && key != 'C') {    // Digit
+    }
+  } else if (key != 'A' && key != 'C') {
     enteredPassword += key;
   }
 
-  // Refresh masked display
   lcd.setCursor(0, 1);
   String masked = "";
   for (unsigned int i = 0; i < enteredPassword.length(); i++) masked += '*';
@@ -595,7 +631,8 @@ void setup() {
   Serial.begin(115200);
   Serial.println("\n[BOOT] Anti-Theft Locker System starting...");
 
-  lcd.init(); lcd.backlight();
+  lcd.init();
+  lcd.backlight();
   lcd.setCursor(0, 0); lcd.print("  ANTI-THEFT    ");
   lcd.setCursor(0, 1); lcd.print("  LOCKER SYSTEM ");
   delay(1500);
@@ -603,15 +640,21 @@ void setup() {
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(VIBRATION_PIN, INPUT_PULLDOWN);
   digitalWrite(BUZZER_PIN, LOW);
-  servo1.attach(SERVO1_PIN); servo1.write(SERVO1_LOCKED);
-  servo2.attach(SERVO2_PIN); servo2.write(SERVO2_CLOSED);
+
+  servo1.attach(SERVO1_PIN);
+  servo1.write(SERVO1_LOCKED);
+
+  servo2.attach(SERVO2_PIN);
+  servo2.write(SERVO2_CLOSED);
 
   lcd.clear();
   lcd.setCursor(0, 0); lcd.print("Connecting WiFi ");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
   int timeout = 0;
   while (WiFi.status() != WL_CONNECTED && timeout++ < 20) {
-    delay(500); Serial.print(".");
+    delay(500);
+    Serial.print(".");
   }
 
   if (WiFi.status() == WL_CONNECTED) {
@@ -649,16 +692,22 @@ void loop() {
 
   // Vibration sensor (ignore STARTUP_GRACE_MS after boot)
   if (millis() - systemStartTime > STARTUP_GRACE_MS) {
-    if (digitalRead(VIBRATION_PIN) == HIGH) {
+    if (digitalRead(VIBRATION_PIN) == LOW) {
+      vibArmed = true;   // sensor is calm again, can re-trigger next HIGH
+    }
+
+    if (vibArmed && digitalRead(VIBRATION_PIN) == HIGH) {
       int highCount = 0;
       for (int i = 0; i < 5; i++) {
         waitWithKeypad(20);
         if (digitalRead(VIBRATION_PIN) == HIGH) highCount++;
       }
+
       if (highCount == 5) {
         unsigned long now = millis();
         if (!vibAlertTriggered || (now - vibLastTrigger > VIBRATION_COOLDOWN)) {
           vibAlertTriggered = true;
+          vibArmed = false;   // stay disarmed until LOW is seen again
           vibLastTrigger = now;
           Serial.println("[SENSOR] High-impact vibration detected!");
           triggerSecurityAlert("Tamper Detected!");
@@ -687,7 +736,7 @@ void loop() {
     drainKeypad();
   }
 
-  // Deferred keypad-event push (instant key response, async Firebase)
+  // Deferred keypad-event push
   if (pendingStatePush) {
     pendingStatePush = false;
     pushStateToFirebase(pendingAction);
@@ -705,7 +754,7 @@ void loop() {
     drainKeypad();
   }
 
-  // Telegram — only runs when a message is queued
+  // Telegram
   if (!telegramQueue.isEmpty()) {
     drainKeypad();
     sendTelegramIfQueued();
