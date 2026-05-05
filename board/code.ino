@@ -25,8 +25,8 @@ const char *WIFI_PASSWORD = "poco1234";
 String CORRECT_PASSWORD = "2580";
 
 // ── Telegram (set via POST /config or web dashboard) ──────
-String TELEGRAM_TOKEN   = "";
-String TELEGRAM_CHAT_ID = "";
+String TELEGRAM_TOKEN   = "8510354203:AAGs0hyHpmpxIRAoA1gjj6-YbP8vMG_N_8c";
+String TELEGRAM_CHAT_ID = "5524391658";
 
 // ── Servo positions ───────────────────────────────────────
 const int SERVO1_LOCKED    = 0;
@@ -44,7 +44,7 @@ const int TELEGRAM_TIMEOUT   = 3000;
 #define SERVO1_PIN    18
 #define SERVO2_PIN    19
 #define BUZZER_PIN    23
-#define VIBRATION_PIN  5
+#define VIBRATION_PIN  15
 
 // ===================== KEYPAD SETUP ========================
 const byte ROWS = 4;
