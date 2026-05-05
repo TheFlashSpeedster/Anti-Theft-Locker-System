@@ -33,7 +33,7 @@ function parseTs(log) {
 export default function EventLog({ logs, onClearLogs }) {
   const [search,      setSearch]      = useState('');
   const [typeFilter,  setTypeFilter]  = useState('all');  // 'all' | one of ALL_TYPES
-  const [window,      setWindow]      = useState('all');  // all | 24h | 7d | 30d
+  const [timeRange,    setTimeRange]   = useState('all');  // all | 24h | 7d | 30d
   const [showFilter,  setShowFilter]  = useState(false);
   const [page,        setPage]        = useState(1);
   const [clearConfirm, setClearConfirm] = useState(false);
@@ -41,7 +41,7 @@ export default function EventLog({ logs, onClearLogs }) {
   // Filtered + searched list — sorted newest-first by savedAt
   const filtered = useMemo(() => {
     const now = Date.now();
-    const windowMs = { '24h': 86400000, '7d': 604800000, '30d': 2592000000 }[window];
+    const windowMs = { '24h': 86400000, '7d': 604800000, '30d': 2592000000 }[timeRange];
     const q = search.toLowerCase();
 
     return [...logs]
@@ -59,7 +59,7 @@ export default function EventLog({ logs, onClearLogs }) {
         )) return false;
         return true;
       });
-  }, [logs, search, typeFilter, window]);
+  }, [logs, search, typeFilter, timeRange]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageSlice  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -129,9 +129,9 @@ export default function EventLog({ logs, onClearLogs }) {
           {/* Time window */}
           <div className="flex bg-surface-container rounded-xl p-1 border border-white/8">
             {WINDOW_OPTS.map(o => (
-              <button key={o.v} onClick={() => { setWindow(o.v); setPage(1); }}
+              <button key={o.v} onClick={() => { setTimeRange(o.v); setPage(1); }}
                 className={`px-3 py-1.5 text-[11px] font-mono rounded-lg transition-all
-                  ${window === o.v ? 'bg-primary/20 text-primary' : 'text-text-variant hover:text-text-primary'}`}>
+                  ${timeRange === o.v ? 'bg-primary/20 text-primary' : 'text-text-variant hover:text-text-primary'}`}>
                 {o.l}
               </button>
             ))}
@@ -246,7 +246,7 @@ export default function EventLog({ logs, onClearLogs }) {
                   <td colSpan="3" className="px-6 py-16 text-center text-text-variant">
                     <span className="material-symbols-outlined text-5xl mb-3 block opacity-30">receipt_long</span>
                     <p className="font-mono text-sm">
-                      {search || activeTypes.size < ALL_TYPES.length
+                      {search || typeFilter !== 'all'
                         ? 'No events match your filters.'
                         : 'No events recorded yet.'}
                     </p>

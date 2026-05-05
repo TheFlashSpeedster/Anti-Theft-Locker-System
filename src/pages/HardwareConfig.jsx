@@ -85,10 +85,10 @@ export default function HardwareConfig({ state }) {
           </div>
 
           {/* Visualization / Display */}
-          <div className="glass-panel p-6 rounded-2xl h-full">
-             <div className="flex justify-between items-end mb-6 border-b border-surface-high pb-4">
+          <div className="glass-panel p-6 rounded-2xl">
+            <div className="flex justify-between items-end mb-6 border-b border-surface-high pb-4">
               <div>
-                <h3 className="font-manrope text-xl font-bold tracking-wider">LCD 16x2 & I2C Module</h3>
+                <h3 className="font-manrope text-xl font-bold tracking-wider">LCD 16x2 &amp; I2C Module</h3>
                 <p className="text-xs text-text-variant font-mono uppercase tracking-widest mt-1">Liquid Crystal Output via I2C</p>
               </div>
               <div className="text-right">
@@ -96,15 +96,48 @@ export default function HardwareConfig({ state }) {
                 <span className="font-mono text-sm text-secondary">0x27 / 0x3F</span>
               </div>
             </div>
-            
-            <div className="w-full flex items-center justify-center p-8 bg-surface-container rounded-xl border border-white/5 shadow-inner">
-              <div className="bg-[#87ad34] p-4 rounded-md shadow-[inset_0_0_20px_rgba(0,0,0,0.5)] border-4 border-[#2d3024] relative">
-                <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:2px_2px]"></div>
-                <div className="font-mono text-[#1a1b15] text-2xl md:text-3xl font-bold tracking-[0.2em] relative z-10 leading-tight">
-                  <div>{lcdText[0] || '                '}</div>
-                  <div>{lcdText[1] || '                '}</div>
+
+            {/* LCD Screen — large, centered */}
+            <div className="flex items-center justify-center py-4">
+              {/* Outer plastic bezel */}
+              <div className="bg-[#1a1b15] rounded-2xl p-4 shadow-2xl border-2 border-[#0d0e09]">
+                {/* PCB board */}
+                <div className="bg-[#2d3024] rounded-xl p-2.5">
+                  {/* Screen glass */}
+                  <div className="bg-[#87ad34] rounded-lg px-5 py-3 relative overflow-hidden shadow-[inset_0_3px_12px_rgba(0,0,0,0.45)]"
+                       style={{minWidth: '320px'}}>
+                    {/* Scanline overlay */}
+                    <div className="absolute inset-0 opacity-[0.06] bg-[repeating-linear-gradient(0deg,#000_0px,#000_1px,transparent_1px,transparent_4px)] pointer-events-none rounded-lg" />
+                    {/* Text rows */}
+                    <div className="relative font-mono text-[#1a1b15] leading-relaxed">
+                      <div className="text-base font-bold tracking-[0.18em] whitespace-pre overflow-hidden">
+                        {(lcdText[0] || '                ').padEnd(16).slice(0, 16)}
+                      </div>
+                      <div className="text-base font-bold tracking-[0.18em] whitespace-pre overflow-hidden">
+                        {(lcdText[1] || '                ').padEnd(16).slice(0, 16)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-center text-[9px] text-[#5a6048] font-mono mt-1.5 tracking-widest">I²C · 0x27</div>
                 </div>
               </div>
+            </div>
+
+            {/* Spec chips */}
+            <div className="grid grid-cols-3 gap-3 mt-5">
+              {[
+                { label: 'Interface', value: 'I²C', icon: 'cable' },
+                { label: 'Columns', value: '16',   icon: 'view_column' },
+                { label: 'Rows',    value: '2',    icon: 'table_rows' },
+              ].map(({ label, value, icon }) => (
+                <div key={label} className="bg-surface-container rounded-xl p-3 border border-white/5 flex items-center gap-2">
+                  <span className="material-symbols-outlined text-secondary text-[16px]">{icon}</span>
+                  <div>
+                    <span className="block text-[9px] text-text-variant uppercase tracking-widest">{label}</span>
+                    <span className="font-mono text-sm font-bold">{value}</span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
