@@ -70,6 +70,7 @@ bool lockerOpen        = false;
 bool alertTriggered    = false;
 bool vibAlertTriggered = false;
 bool ntpSynced         = false;
+bool vibSensorEnabled  = false;   // set true when physical SW-420 is connected & working
 unsigned long vibLastTrigger  = 0;
 unsigned long systemStartTime = 0;
 unsigned long lastNtpRetry    = 0;
@@ -147,6 +148,8 @@ void loadConfig() {
   String cid = prefs.getString("tgChatId", "");
   if (tok.length() > 10) { TELEGRAM_TOKEN   = tok; Serial.println("[CFG] Telegram token loaded."); }
   if (cid.length() >  0) { TELEGRAM_CHAT_ID = cid; Serial.println("[CFG] Telegram chatId loaded."); }
+  vibSensorEnabled = prefs.getBool("vibEnabled", false);  // default OFF (safe for broken/missing sensor)
+  Serial.println("[CFG] Vib sensor HW: " + String(vibSensorEnabled ? "ENABLED" : "DISABLED"));
   prefs.end();
 }
 
@@ -155,6 +158,7 @@ void saveConfig() {
   prefs.putString("password",  CORRECT_PASSWORD);
   prefs.putString("tgToken",   TELEGRAM_TOKEN);
   prefs.putString("tgChatId",  TELEGRAM_CHAT_ID);
+  prefs.putBool("vibEnabled",  vibSensorEnabled);
   prefs.end();
   Serial.println("[CFG] Config saved to flash.");
 }
@@ -251,6 +255,7 @@ void handleStatus() {
   doc["buzzerOn"]                = (digitalRead(BUZZER_PIN) == HIGH);
   doc["isBreached"]              = alertTriggered;
   doc["vibrationDetected"]       = vibAlertTriggered;
+  doc["vibSensorEnabled"]        = vibSensorEnabled;
   doc["ntpSynced"]               = ntpSynced;
   doc["lastSeen"]                = getCurrentTime();
   doc["uptimeMs"]                = (long)millis();
@@ -307,6 +312,12 @@ void handleConfigHTTP() {
   if (doc.containsKey("tgChatId")) {
     String c = doc["tgChatId"].as<String>();
     if (c.length() > 0) { TELEGRAM_CHAT_ID = c; changed = true; }
+  }
+  if (doc.containsKey("vibEnabled")) {
+    vibSensorEnabled = doc["vibEnabled"].as<bool>();
+    changed = true;
+    Serial.println("[CFG] Vib sensor HW set to: " + String(vibSensorEnabled ? "ENABLED" : "DISABLED"));
+    addLog("info", vibSensorEnabled ? "HW vibration sensor ENABLED" : "HW vibration sensor DISABLED");
   }
   if (changed) saveConfig();
   server.send(200, "application/json", "{\"ok\":true}");
@@ -676,8 +687,8 @@ void loop() {
   server.handleClient();
   drainKeypad();
 
-  // Vibration sensor (ignore STARTUP_GRACE_MS after boot)
-  if (millis() - systemStartTime > STARTUP_GRACE_MS) {
+  // Vibration sensor — only when hardware is enabled
+  if (vibSensorEnabled && millis() - systemStartTime > STARTUP_GRACE_MS) {
     if (digitalRead(VIBRATION_PIN) == HIGH) {
       int highCount = 0;
       for (int i = 0; i < 5; i++) {

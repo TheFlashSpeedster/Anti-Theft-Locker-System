@@ -116,6 +116,36 @@ export default function Settings() {
   const [dashStatus,  setDashStatus]  = useState('idle');
   const [dashError,   setDashError]   = useState('');
 
+  // ── Hardware sensors ───────────────────────────────────────────────────────────
+  const [vibEnabled,    setVibEnabled]    = useState(false);
+  const [vibHwStatus,   setVibHwStatus]   = useState('idle'); // idle | saving | ok | error
+
+  // Fetch current vib sensor state from ESP32 on mount
+  useEffect(() => {
+    fetch(`${ESP32_IP}/status`, { signal: AbortSignal.timeout(2000) })
+      .then(r => r.json())
+      .then(d => { if (typeof d.vibSensorEnabled === 'boolean') setVibEnabled(d.vibSensorEnabled); })
+      .catch(() => {});
+  }, []);
+
+  const toggleVibSensor = async () => {
+    const next = !vibEnabled;
+    setVibHwStatus('saving');
+    try {
+      const res = await fetch(`${ESP32_IP}/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vibEnabled: next }),
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!res.ok) throw new Error();
+      setVibEnabled(next);
+      setVibHwStatus('ok');
+    } catch {
+      setVibHwStatus('error');
+    }
+  };
+
   // ── Auto-clear banners ─────────────────────────────────────────────────────
   useEffect(() => { if (tgStatus  !== 'idle') { const t = setTimeout(() => setTgStatus('idle'),  3500); return () => clearTimeout(t); } }, [tgStatus]);
   useEffect(() => { if (pinStatus !== 'idle') { const t = setTimeout(() => setPinStatus('idle'), 3500); return () => clearTimeout(t); } }, [pinStatus]);
@@ -412,6 +442,56 @@ export default function Settings() {
           </div>
         </div>
       </div>
+
+      {/* ── 4. Hardware Sensors ── */}
+      <div className="glass-panel p-6 rounded-2xl relative overflow-hidden">
+        <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl"
+          style={{ background: vibEnabled ? 'var(--color-secondary)' : '#6b7280' }} />
+
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-3">
+            <span className={`material-symbols-outlined ${vibEnabled ? 'text-secondary' : 'text-text-variant/40'}`}>sensors</span>
+            <div>
+              <h2 className="font-manrope text-xl font-bold tracking-wider uppercase">Hardware Sensors</h2>
+              <p className="text-xs text-text-variant font-mono mt-0.5">Configure physical sensor behaviour on the ESP32.</p>
+            </div>
+          </div>
+          <SaveBanner status={vibHwStatus} />
+        </div>
+
+        {/* SW-420 toggle row */}
+        <div className={`mt-5 flex items-center justify-between gap-4 p-4 rounded-xl border transition-all
+          ${vibEnabled ? 'bg-secondary/5 border-secondary/20' : 'bg-white/3 border-white/8'}`}>
+          <div className="flex items-center gap-3">
+            <span className={`material-symbols-outlined text-xl ${vibEnabled ? 'text-secondary' : 'text-text-variant/40'}`}>vibration</span>
+            <div>
+              <p className="text-sm font-bold font-manrope">SW-420 Vibration Sensor</p>
+              <p className="text-[10px] font-mono text-text-variant/60 mt-0.5">
+                {vibEnabled
+                  ? 'GPIO 5 polling active — physical tamper detection ON'
+                  : 'GPIO polling paused — use "Simulate Vibration" button for demo'}
+              </p>
+            </div>
+          </div>
+          <button onClick={toggleVibSensor} disabled={vibHwStatus === 'saving'}
+            className="flex-shrink-0 relative w-14 h-7 rounded-full border-2 transition-all duration-300 focus:outline-none disabled:opacity-50"
+            style={{ borderColor: vibEnabled ? 'rgba(0,240,180,0.5)' : 'rgba(255,255,255,0.15)' }}>
+            <span className="absolute inset-0 rounded-full transition-all duration-300"
+              style={{ background: vibEnabled ? 'rgba(0,240,180,0.2)' : 'rgba(255,255,255,0.05)' }} />
+            <span className="absolute top-0.5 w-5 h-5 rounded-full shadow-lg transition-all duration-300"
+              style={{
+                left: vibEnabled ? 'calc(100% - 1.375rem)' : '0.125rem',
+                background: vibEnabled ? 'var(--color-secondary)' : '#6b7280',
+              }} />
+          </button>
+        </div>
+
+        <p className="text-[10px] font-mono text-text-variant/40 mt-3">
+          ⚠ Disable if sensor is physically disconnected or broken to prevent false tamper alerts.
+          The "Simulate Vibration" button works regardless of this setting.
+        </p>
+      </div>
+
     </div>
   );
 }
