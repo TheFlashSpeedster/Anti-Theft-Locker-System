@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../firebase';
-import { ref, set } from 'firebase/database';
+import { ESP32_IP } from '../firebase';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function loadTelegramConfig() {
@@ -54,17 +53,19 @@ export default function Settings() {
   useEffect(() => { if (pinStatus !== 'idle') { const t = setTimeout(() => setPinStatus('idle'), 3000); return () => clearTimeout(t); } }, [pinStatus]);
   useEffect(() => { if (dashStatus !== 'idle') { const t = setTimeout(() => setDashStatus('idle'), 3000); return () => clearTimeout(t); } }, [dashStatus]);
 
-  // ── Telegram save ──────────────────────────────────────────────────────────
+  // ── Telegram save — POST directly to ESP32 /config ───────────────────────
   const saveTelegram = async () => {
     setTgStatus('saving');
     try {
       localStorage.setItem('tg_bot_token', tgConfig.botToken.trim());
       localStorage.setItem('tg_chat_id',   tgConfig.chatId.trim());
-      // Also push to Firebase so ESP32 can read it
-      await set(ref(db, 'locker/config/telegram'), {
-        botToken: tgConfig.botToken.trim(),
-        chatId:   tgConfig.chatId.trim(),
+      const res = await fetch(`${ESP32_IP}/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tgToken: tgConfig.botToken.trim(), tgChatId: tgConfig.chatId.trim() }),
+        signal: AbortSignal.timeout(3000),
       });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
       setTgStatus('ok');
     } catch (err) {
       console.error('Telegram save failed:', err);
@@ -72,14 +73,20 @@ export default function Settings() {
     }
   };
 
-  // ── Locker PIN save ────────────────────────────────────────────────────────
+  // ── Locker PIN save — POST directly to ESP32 /config ──────────────────────
   const saveLockerPin = async () => {
     setPinError('');
     if (lockerPin.length < 4) { setPinError('PIN must be at least 4 characters.'); return; }
     if (lockerPin !== lockerPinConfirm) { setPinError('PINs do not match.'); return; }
     setPinStatus('saving');
     try {
-      await set(ref(db, 'locker/config/password'), lockerPin.trim());
+      const res = await fetch(`${ESP32_IP}/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: lockerPin.trim() }),
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
       setLockerPin('');
       setLockerPinConfirm('');
       setPinStatus('ok');
@@ -118,7 +125,7 @@ export default function Settings() {
             <span className="material-symbols-outlined text-primary">send</span>
             <div>
               <h2 className="font-manrope text-xl font-bold tracking-wider uppercase">Telegram Alerts</h2>
-              <p className="text-xs text-text-variant font-mono mt-0.5">Bot token &amp; user ID are pushed to Firebase so the ESP32 picks them up.</p>
+              <p className="text-xs text-text-variant font-mono mt-0.5">Sent directly to ESP32 and saved in flash — no cloud needed.</p>
             </div>
           </div>
           <span className="text-[10px] px-2 py-1 rounded bg-primary/10 text-primary font-mono uppercase tracking-wider border border-primary/20">
@@ -200,7 +207,7 @@ export default function Settings() {
           <span className="material-symbols-outlined text-secondary">pin</span>
           <div>
             <h2 className="font-manrope text-xl font-bold tracking-wider uppercase">Locker PIN</h2>
-            <p className="text-xs text-text-variant font-mono mt-0.5">Updates the physical keypad password stored on Firebase. ESP32 picks it up on next poll.</p>
+            <p className="text-xs text-text-variant font-mono mt-0.5">Sent directly to ESP32 and saved in flash — takes effect immediately.</p>
           </div>
         </div>
 

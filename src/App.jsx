@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, NavLink, useLocation } from 'react-router-dom';
-import { db } from './firebase';
-import { ref, onValue, set } from 'firebase/database';
+import { ESP32_IP, POLL_INTERVAL_MS } from './firebase';
 import Login from './pages/Login';
 import VaultStatus from './pages/VaultStatus';
 import HardwareConfig from './pages/HardwareConfig';
@@ -21,17 +20,16 @@ const DEFAULT_TEST_STATE = {
   logs: [{ id: 1, type: 'info', message: '[TEST] System initialized. Sandbox mode active.', timestamp: new Date().toLocaleString() }],
 };
 
-// Persist test state in localStorage so it survives page refresh
 function loadTestState() {
   try { return JSON.parse(localStorage.getItem('test_state')) || DEFAULT_TEST_STATE; }
   catch { return DEFAULT_TEST_STATE; }
 }
 function saveTestState(s) {
-  const { logs: _, ...withoutLogs } = s; // don't persist logs in localStorage
+  const { logs: _, ...withoutLogs } = s;
   localStorage.setItem('test_state', JSON.stringify(withoutLogs));
 }
 
-// ── Mode badge helper ────────────────────────────────────────────────────────
+// ── Mode badge ───────────────────────────────────────────────────────────────
 function ModeBadge({ mode, connected, onSwitch }) {
   const isTest = mode === 'test';
   return (
@@ -81,7 +79,7 @@ function Layout({ children, state, mode, connected, onLogout, onSwitchMode }) {
           <h1 className="font-manrope text-2xl font-bold tracking-widest text-primary glow-primary-text uppercase">
             Aether Sentinel
           </h1>
-          <p className="text-xs text-text-variant tracking-wider mt-1 font-mono">v3.1.0-PROD</p>
+          <p className="text-xs text-text-variant tracking-wider mt-1 font-mono">v3.2.0-LOCAL</p>
         </div>
 
         <nav className="flex-1 py-6 px-4 space-y-2">
@@ -106,6 +104,10 @@ function Layout({ children, state, mode, connected, onLogout, onSwitchMode }) {
             <span className="text-xs font-mono uppercase tracking-widest text-text-variant">{statusLabel}</span>
           </div>
           <ModeBadge mode={mode} connected={connected} onSwitch={onSwitchMode} />
+          {/* Show ESP32 IP hint */}
+          <p className="text-[10px] font-mono text-text-variant/50 truncate">
+            {ESP32_IP}
+          </p>
         </div>
       </aside>
 
@@ -131,14 +133,16 @@ function Layout({ children, state, mode, connected, onLogout, onSwitchMode }) {
           </div>
         </header>
 
-        {/* Offline banner (Live mode only) */}
+        {/* Offline banner */}
         {mode === 'live' && !connected && (
           <div className="px-4 md:px-8 pt-4">
             <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-yellow-400">
               <span className="material-symbols-outlined text-xl">wifi_off</span>
               <div>
-                <p className="text-xs font-bold uppercase tracking-wider font-manrope">ESP32 Offline</p>
-                <p className="text-[10px] font-mono opacity-70">Showing last known state. Controls locked until ESP32 reconnects.</p>
+                <p className="text-xs font-bold uppercase tracking-wider font-manrope">ESP32 Unreachable</p>
+                <p className="text-[10px] font-mono opacity-70">
+                  Cannot reach {ESP32_IP} — make sure you are on the same WiFi network.
+                </p>
               </div>
             </div>
           </div>
@@ -161,7 +165,7 @@ function Layout({ children, state, mode, connected, onLogout, onSwitchMode }) {
         ))}
       </nav>
 
-      {/* HUD Overlay (desktop) */}
+      {/* HUD Overlay */}
       <div className="fixed bottom-20 md:bottom-8 right-8 glass-panel p-4 rounded-xl border border-primary/20 pointer-events-none z-30 hidden md:block">
         <div className="space-y-3 font-mono text-xs uppercase tracking-wider">
           <div className="flex items-center justify-between gap-6">
@@ -173,8 +177,8 @@ function Layout({ children, state, mode, connected, onLogout, onSwitchMode }) {
             <span className={connected ? 'text-secondary' : 'text-yellow-400'}>{connected ? 'ONLINE' : 'OFFLINE'}</span>
           </div>
           <div className="flex items-center justify-between gap-6">
-            <span className="text-text-variant">POWER</span>
-            <span className="text-secondary">MAINS (5V)</span>
+            <span className="text-text-variant">Link</span>
+            <span className="text-secondary">LOCAL WiFi</span>
           </div>
         </div>
       </div>
@@ -185,19 +189,16 @@ function Layout({ children, state, mode, connected, onLogout, onSwitchMode }) {
 // ── Main App ─────────────────────────────────────────────────────────────────
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('auth') === 'true');
-
-  // ── Mode: 'live' | 'test' ────────────────────────────────────────────────
   const [mode, setMode] = useState(() => localStorage.getItem('app_mode') || 'live');
 
-  // ── Live state: mirrors Firebase, NEVER locally mutated ─────────────────
-  const [liveState, setLiveState] = useState(DEFAULT_LIVE_STATE);
-  const [connected, setConnected] = useState(false);
+  // ── Live state: polled from ESP32 /status ────────────────────────────────
+  const [liveState, setLiveState]   = useState(DEFAULT_LIVE_STATE);
+  const [connected, setConnected]   = useState(false);
 
-  // ── Test state: local only, persisted in localStorage ───────────────────
-  const [testState, setTestState] = useState(loadTestState);
-  const [testLogs, setTestLogs] = useState(() => DEFAULT_TEST_STATE.logs);
+  // ── Test state: local only ───────────────────────────────────────────────
+  const [testState, setTestState]   = useState(loadTestState);
+  const [testLogs, setTestLogs]     = useState(() => DEFAULT_TEST_STATE.logs);
 
-  // Active state shown to pages
   const activeState = mode === 'test'
     ? { ...testState, logs: testLogs }
     : { ...liveState };
@@ -208,31 +209,20 @@ function App() {
     localStorage.setItem('app_mode', next);
   };
 
-  // ── Firebase: live state ─────────────────────────────────────────────────
-  const STALE_MS = 25000;
-  const wallClockRef  = useRef(0);
-  const lastUptimeRef = useRef(parseInt(localStorage.getItem('esp32_uptime') || '0'));
+  // ── Poll ESP32 /status every POLL_INTERVAL_MS ────────────────────────────
+  const pollTimer = useRef(null);
 
-  useEffect(() => {
-    const statusRef = ref(db, 'locker/status');
-    const unsubscribe = onValue(statusRef, (snapshot) => {
-      const data = snapshot.val();
-      if (!data) { setConnected(false); return; }
-
-      const uptimeMs = data.uptimeMs ?? 0;
-      if (uptimeMs > 0 && uptimeMs !== lastUptimeRef.current) {
-        lastUptimeRef.current = uptimeMs;
-        localStorage.setItem('esp32_uptime', uptimeMs);
-        wallClockRef.current = Date.now();
-        setConnected(true);
-      }
+  const pollStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`${ESP32_IP}/status`, { signal: AbortSignal.timeout(2000) });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
 
       let newLcdText = [' SYSTEM LOCKED  ', '   ENTER PIN:   '];
       if (!data.isLocked)              newLcdText = [' ACCESS GRANTED ', '  DOOR OPENED   '];
       else if (data.isBreached)        newLcdText = [' SYSTEM BREACHED', '  ALARM ACTIVE! '];
       else if (data.failedAttempts > 0) newLcdText = [' INCORRECT PIN  ', `  ATTEMPTS: ${data.failedAttempts}/3 `];
 
-      // Update live state ONLY — never touches testState
       setLiveState(prev => ({
         ...prev,
         isLocked:                data.isLocked               ?? prev.isLocked,
@@ -243,30 +233,33 @@ function App() {
         vibrationDetected:       data.vibrationDetected       ?? prev.vibrationDetected,
         lcdText: newLcdText,
       }));
-    }, () => setConnected(false));
-
-    const watchdog = setInterval(() => {
-      const wall = wallClockRef.current;
-      if (wall === 0 || Date.now() - wall >= STALE_MS) setConnected(false);
-    }, 5000);
-
-    return () => { unsubscribe(); clearInterval(watchdog); };
+      setConnected(true);
+    } catch {
+      setConnected(false);
+    }
   }, []);
 
-  // ── Firebase: live logs ───────────────────────────────────────────────────
+  // ── Poll ESP32 /logs every 5s ────────────────────────────────────────────
+  const pollLogs = useCallback(async () => {
+    try {
+      const res = await fetch(`${ESP32_IP}/logs`, { signal: AbortSignal.timeout(2000) });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data.logs)) {
+        const logsArray = [...data.logs].reverse().slice(0, 50).map((l, i) => ({ id: i, ...l }));
+        setLiveState(prev => ({ ...prev, logs: logsArray }));
+      }
+    } catch { /* silent */ }
+  }, []);
+
   useEffect(() => {
-    const logsRef = ref(db, 'locker/logs');
-    const unsubscribe = onValue(logsRef, (snapshot) => {
-      const data = snapshot.val();
-      if (!data) return;
-      const logsArray = Object.entries(data)
-        .map(([id, log]) => ({ id, ...log }))
-        .sort((a, b) => b.ts - a.ts)
-        .slice(0, 50);
-      setLiveState(prev => ({ ...prev, logs: logsArray }));
-    });
-    return () => unsubscribe();
-  }, []);
+    if (mode !== 'live') return;
+    pollStatus();
+    pollLogs();
+    const statusTimer = setInterval(pollStatus, POLL_INTERVAL_MS);
+    const logsTimer   = setInterval(pollLogs, 5000);
+    return () => { clearInterval(statusTimer); clearInterval(logsTimer); };
+  }, [mode, pollStatus, pollLogs]);
 
   // ── Command handler ───────────────────────────────────────────────────────
   const addTestLog = useCallback((type, message) => {
@@ -275,52 +268,50 @@ function App() {
 
   const sendCommand = useCallback(async (cmd) => {
     if (mode === 'live') {
-      // Live mode: only send if ESP32 is connected
       if (!connected) return;
       try {
-        await set(ref(db, 'locker/command'), { cmd, ts: Math.floor(Date.now() / 1000) });
+        await fetch(`${ESP32_IP}/command`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cmd }),
+          signal: AbortSignal.timeout(3000),
+        });
+        // Poll immediately to reflect the change
+        setTimeout(pollStatus, 300);
       } catch (err) {
-        console.error('Firebase command failed:', err);
+        console.error('ESP32 command failed:', err);
       }
       return;
     }
 
-    // ── TEST mode: update local state only, never touches Firebase ──────
+    // ── TEST mode: local simulation ──────────────────────────────────────
     setTestState(prev => {
       let next = { ...prev };
       switch (cmd) {
         case '/unlock':
           next = { ...next, isLocked: false, lcdText: [' ACCESS GRANTED ', '  DOOR OPENED   '] };
-          addTestLog('success', '[TEST] Door unlocked remotely');
-          break;
+          addTestLog('success', '[TEST] Door unlocked remotely'); break;
         case '/lock':
           next = { ...next, isLocked: true, lcdText: [' SYSTEM LOCKED  ', '   ENTER PIN:   '] };
-          addTestLog('info', '[TEST] Door locked');
-          break;
+          addTestLog('info', '[TEST] Door locked'); break;
         case '/trapdoor_open':
           next = { ...next, isSecretCompartmentOpen: true };
-          addTestLog('info', '[TEST] Trapdoor opened');
-          break;
+          addTestLog('info', '[TEST] Trapdoor opened'); break;
         case '/trapdoor_close':
           next = { ...next, isSecretCompartmentOpen: false };
-          addTestLog('info', '[TEST] Trapdoor sealed');
-          break;
+          addTestLog('info', '[TEST] Trapdoor sealed'); break;
         case '/trapdoor_flip':
           next = { ...next, isSecretCompartmentOpen: false };
-          addTestLog('info', '[TEST] Trapdoor flip complete');
-          break;
+          addTestLog('info', '[TEST] Trapdoor flip complete'); break;
         case '/buzzer_on':
           next = { ...next, buzzerOn: true, isBreached: true };
-          addTestLog('warning', '[TEST] Buzzer + breach latched via web');
-          break;
+          addTestLog('warning', '[TEST] Buzzer + breach latched via web'); break;
         case '/buzzer_off':
           next = { ...next, buzzerOn: false };
-          addTestLog('info', '[TEST] Buzzer silenced');
-          break;
+          addTestLog('info', '[TEST] Buzzer silenced'); break;
         case '/reset':
           next = { ...DEFAULT_TEST_STATE };
-          addTestLog('info', '[TEST] System fully reset');
-          break;
+          addTestLog('info', '[TEST] System fully reset'); break;
         case '__sim_wrong_pin': {
           const attempts = prev.failedAttempts + 1;
           if (attempts >= 3) {
@@ -336,13 +327,12 @@ function App() {
           addTestLog('critical', '[TEST] Vibration detected — tamper alert');
           next = { ...next, vibrationDetected: true, buzzerOn: true, isBreached: true, lcdText: ['TAMPER DETECTED!', '  ALARM ACTIVE! '] };
           break;
-        default:
-          break;
+        default: break;
       }
-      saveTestState(next); // persist to localStorage (survives refresh)
+      saveTestState(next);
       return next;
     });
-  }, [mode, connected, addTestLog]);
+  }, [mode, connected, addTestLog, pollStatus]);
 
   const handleLogout = () => {
     localStorage.removeItem('auth');
@@ -351,16 +341,15 @@ function App() {
 
   if (!isLoggedIn) return <Login onLogin={() => setIsLoggedIn(true)} />;
 
-  // In live mode offline → controls disabled (pass canControl flag)
   const canControl = mode === 'test' || connected;
 
   return (
     <Router>
       <Layout state={activeState} mode={mode} connected={connected} onLogout={handleLogout} onSwitchMode={switchMode}>
         <Routes>
-          <Route path="/" element={<VaultStatus state={activeState} connected={connected} mode={mode} canControl={canControl} onCommand={sendCommand} />} />
+          <Route path="/"         element={<VaultStatus state={activeState} connected={connected} mode={mode} canControl={canControl} onCommand={sendCommand} />} />
           <Route path="/hardware" element={<HardwareConfig state={activeState} />} />
-          <Route path="/logs" element={<EventLog logs={activeState.logs} />} />
+          <Route path="/logs"     element={<EventLog logs={activeState.logs} />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </Layout>
