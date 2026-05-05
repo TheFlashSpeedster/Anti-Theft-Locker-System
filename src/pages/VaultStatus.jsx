@@ -369,19 +369,67 @@ export default function VaultStatus({ state, connected, mode, canControl, onComm
           {/* Trapdoor */}
           <div>
             <p className="text-[9px] font-mono uppercase tracking-widest text-text-variant mb-2 px-0.5">📦 Compartment</p>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { label: 'Open', icon: 'inventory_2', c: '/trapdoor_open',  color: 'primary',   active: displayCompartment },
-                { label: 'Seal', icon: 'inventory',   c: '/trapdoor_close', color: 'secondary', active: !displayCompartment },
-                { label: 'Flip', icon: 'autorenew',   c: '/trapdoor_flip',  color: 'secondary', active: false },
-              ].map(b => (
-                <button key={b.c} onClick={exec(b.c)}
-                  className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 font-bold transition-all
-                    ${b.active ? `bg-${b.color}/20 border-${b.color} text-${b.color}` : `bg-surface-container border-${b.color}/20 text-${b.color} hover:border-${b.color}/50 hover:bg-${b.color}/10`}`}>
-                  <span className={`material-symbols-outlined text-xl ${isP(b.c) ? 'animate-spin' : ''}`}>{isP(b.c) ? 'progress_activity' : b.icon}</span>
-                  <p className="text-[10px] font-black uppercase tracking-wide font-manrope">{b.label}</p>
-                </button>
-              ))}
+            <div className="space-y-2">
+
+              {/* Open / Close toggle row — mirrors door toggle */}
+              {(() => {
+                const cLoading = isP('/trapdoor_open') || isP('/trapdoor_close');
+                const nextCmd  = displayCompartment ? '/trapdoor_close' : '/trapdoor_open';
+                return (
+                  <div className="flex items-center gap-4 px-5 py-4 rounded-xl border border-white/8 bg-surface-container">
+                    {/* Icon */}
+                    <span className={`material-symbols-outlined text-2xl flex-shrink-0 transition-colors duration-300 ${displayCompartment ? 'text-primary' : 'text-secondary'}`}>
+                      {displayCompartment ? 'inventory_2' : 'inventory'}
+                    </span>
+
+                    {/* Labels */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-black uppercase tracking-wider font-manrope text-text-primary">Secret Compartment</p>
+                      <p className="text-[9px] font-mono text-text-variant mt-0.5">
+                        {cLoading ? 'Sending command…' : displayCompartment ? 'Servo 2 · Deployed' : 'Servo 2 · Sealed'}
+                      </p>
+                    </div>
+
+                    {/* State badge */}
+                    <span className={`text-[9px] font-mono uppercase tracking-wider px-2 py-0.5 rounded border font-bold flex-shrink-0 transition-all duration-300
+                      ${displayCompartment ? 'text-primary border-primary/30 bg-primary/10' : 'text-secondary border-secondary/30 bg-secondary/10'}`}>
+                      {displayCompartment ? 'Open' : 'Sealed'}
+                    </span>
+
+                    {/* Toggle switch */}
+                    <button
+                      onClick={exec(nextCmd)}
+                      disabled={cLoading}
+                      aria-label={displayCompartment ? 'Seal compartment' : 'Open compartment'}
+                      className={`flex-shrink-0 relative w-14 h-7 rounded-full border-2 transition-all duration-300 focus:outline-none disabled:opacity-40
+                        ${displayCompartment ? 'border-primary/40 hover:border-primary/70' : 'border-secondary/40 hover:border-secondary/70'}`}
+                    >
+                      <span className={`absolute inset-0 rounded-full transition-all duration-300
+                        ${displayCompartment ? 'bg-primary/25' : 'bg-secondary/20'}`} />
+                      <span className={`absolute top-0.5 w-5 h-5 rounded-full shadow-lg transition-all duration-300 flex items-center justify-center
+                        ${displayCompartment ? 'left-[calc(100%-1.375rem)] bg-primary' : 'left-0.5 bg-secondary'}`}>
+                        {cLoading && (
+                          <span className="material-symbols-outlined text-[11px] text-black animate-spin leading-none">progress_activity</span>
+                        )}
+                      </span>
+                    </button>
+                  </div>
+                );
+              })()}
+
+              {/* Flip button */}
+              <button onClick={exec('/trapdoor_flip')} disabled={!canControl}
+                className="w-full flex items-center gap-3 px-5 py-3 rounded-xl border border-white/8 bg-surface-container hover:bg-primary/8 hover:border-primary/30 transition-all duration-200 group disabled:opacity-40">
+                <span className={`material-symbols-outlined text-xl text-text-variant group-hover:text-primary transition-colors duration-200 ${isP('/trapdoor_flip') ? 'animate-spin text-primary' : ''}`}>
+                  {isP('/trapdoor_flip') ? 'progress_activity' : 'autorenew'}
+                </span>
+                <div className="text-left flex-1">
+                  <p className="text-xs font-black uppercase tracking-wider font-manrope text-text-variant group-hover:text-primary transition-colors duration-200">Flip Compartment</p>
+                  <p className="text-[9px] font-mono text-text-variant/50">Deploy → hold → seal in one action</p>
+                </div>
+                <span className="material-symbols-outlined text-[14px] text-text-variant/30 group-hover:text-primary/50 transition-colors">chevron_right</span>
+              </button>
+
             </div>
           </div>
 

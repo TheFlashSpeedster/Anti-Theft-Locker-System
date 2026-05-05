@@ -77,7 +77,8 @@ String enteredPassword = "";
 String localIP         = "";
 
 // ── Telegram single-slot queue (non-blocking) ─────────────
-String telegramQueue = "";
+String              telegramQueue = "";
+SemaphoreHandle_t   tgramMutex    = NULL;
 
 // ===================== LOG RING BUFFER =====================
 #define LOG_MAX 30
@@ -124,7 +125,10 @@ void waitWithKeypad(unsigned long ms) {
 }
 
 void queueTelegram(const String &msg) {
-  if (telegramQueue.isEmpty()) telegramQueue = msg;
+  if (tgramMutex && xSemaphoreTake(tgramMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+    if (telegramQueue.isEmpty()) telegramQueue = msg;
+    xSemaphoreGive(tgramMutex);
+  }
 }
 
 // ===================== CORS HELPER =========================
@@ -187,29 +191,51 @@ String getCurrentTime() {
   return String(buf);
 }
 
-// ===================== TELEGRAM ============================
-void sendTelegramIfQueued() {
-  if (telegramQueue.isEmpty() || TELEGRAM_TOKEN.isEmpty()) return;
-  if (WiFi.status() != WL_CONNECTED) return;
+// ===================== TELEGRAM (FreeRTOS Core 0) ==========
+// Runs on Core 0 — never blocks the main loop (Core 1).
+void telegramTask(void *param) {
+  for (;;) {
+    String msg = "";
+    String tok = "";
+    String cid = "";
 
-  HTTPClient http;
-  http.begin("https://api.telegram.org/bot" + TELEGRAM_TOKEN + "/sendMessage");
-  http.setTimeout(TELEGRAM_TIMEOUT);
-  http.addHeader("Content-Type", "application/json");
+    // Snapshot queue + creds under mutex
+    if (xSemaphoreTake(tgramMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+      msg = telegramQueue;
+      tok = TELEGRAM_TOKEN;
+      cid = TELEGRAM_CHAT_ID;
+      xSemaphoreGive(tgramMutex);
+    }
 
-  DynamicJsonDocument doc(512);
-  doc["chat_id"]    = TELEGRAM_CHAT_ID;
-  doc["text"]       = telegramQueue;
-  doc["parse_mode"] = "HTML";
-  String body; serializeJson(doc, body);
+    if (!msg.isEmpty() && !tok.isEmpty() && WiFi.status() == WL_CONNECTED) {
+      HTTPClient http;
+      http.begin("https://api.telegram.org/bot" + tok + "/sendMessage");
+      http.setTimeout(TELEGRAM_TIMEOUT);
+      http.addHeader("Content-Type", "application/json");
 
-  int code = http.POST(body);
-  http.end();
-  if (code >= 200 && code < 300) {
-    Serial.printf("[TGRAM] OK (HTTP %d)\n", code);
-    telegramQueue = "";
-  } else {
-    Serial.printf("[TGRAM] FAILED (HTTP %d) — will retry\n", code);
+      DynamicJsonDocument doc(512);
+      doc["chat_id"]    = cid;
+      doc["text"]       = msg;
+      doc["parse_mode"] = "HTML";
+      String body; serializeJson(doc, body);
+
+      int code = http.POST(body);
+      http.end();
+
+      if (code >= 200 && code < 300) {
+        Serial.printf("[TGRAM] OK (HTTP %d)\n", code);
+        // Clear only if queue hasn't been updated while we were sending
+        if (xSemaphoreTake(tgramMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+          if (telegramQueue == msg) telegramQueue = "";
+          xSemaphoreGive(tgramMutex);
+        }
+      } else {
+        Serial.printf("[TGRAM] FAILED (HTTP %d) — retry in 10 s\n", code);
+        vTaskDelay(pdMS_TO_TICKS(10000)); // back-off before retry
+      }
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(300)); // poll queue every 300 ms
   }
 }
 
@@ -567,6 +593,11 @@ void setup() {
 
   loadConfig();
 
+  // Start Telegram task on Core 0 (main loop runs on Core 1)
+  tgramMutex = xSemaphoreCreateMutex();
+  xTaskCreatePinnedToCore(telegramTask, "TelegramTask", 8192, NULL, 1, NULL, 0);
+  Serial.println("[BOOT] Telegram task started on Core 0.");
+
   lcd.clear();
   lcd.setCursor(0, 0); lcd.print("Connecting WiFi ");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -651,10 +682,5 @@ void loop() {
     retryNtpBackground();
   }
 
-  // Telegram — only runs when a message is queued
-  if (!telegramQueue.isEmpty()) {
-    drainKeypad();
-    sendTelegramIfQueued();
-    drainKeypad();
-  }
+  // Telegram is handled by telegramTask() on Core 0 — nothing to do here.
 }

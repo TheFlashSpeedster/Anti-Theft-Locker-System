@@ -73,41 +73,59 @@ function Layout({ children, state, mode, connected, onLogout, onSwitchMode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg-base text-text-primary">
-      {/* Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 glass-panel border-r border-r-primary/20 relative z-10">
-        <div className="p-6 border-b border-b-primary/10">
-          <h1 className="font-manrope text-2xl font-bold tracking-widest text-primary glow-primary-text uppercase">
-            Aether Sentinel
-          </h1>
-          <p className="text-xs text-text-variant tracking-wider mt-1 font-mono">v3.2.0-LOCAL</p>
+      {/* ── Sidebar ── */}
+      <aside className="hidden md:flex flex-col w-64 border-r border-white/5 relative z-10" style={{background:'linear-gradient(180deg,rgba(20,22,30,0.98) 0%,rgba(14,16,22,0.99) 100%)'}}>
+
+        {/* Logo */}
+        <div className="px-6 pt-7 pb-5 border-b border-white/5">
+          <div className="flex items-center gap-2.5 mb-1">
+            <div className="w-7 h-7 rounded-lg bg-primary/15 border border-primary/30 flex items-center justify-center flex-shrink-0">
+              <span className="material-symbols-outlined text-primary text-[16px]">shield_lock</span>
+            </div>
+            <h1 className="font-manrope text-lg font-black tracking-widest text-white uppercase">
+              Aether
+            </h1>
+          </div>
+          <p className="text-[10px] text-text-variant/50 font-mono tracking-wider pl-9">Sentinel · v3.2 · Local</p>
         </div>
 
-        <nav className="flex-1 py-6 px-4 space-y-2">
+        {/* Nav links */}
+        <nav className="flex-1 py-5 px-3 space-y-0.5">
           {[
-            { to: '/', icon: 'lock', label: 'Vault Status' },
+            { to: '/', icon: 'lock',           label: 'Vault Status' },
             { to: '/hardware', icon: 'developer_board', label: 'Hardware' },
-            { to: '/logs', icon: 'list_alt', label: 'Event Log' },
-            { to: '/settings', icon: 'settings', label: 'Settings' },
+            { to: '/logs',     icon: 'list_alt',        label: 'Event Log' },
+            { to: '/settings', icon: 'settings',        label: 'Settings' },
           ].map(({ to, icon, label }) => (
-            <NavLink key={to} to={to}
-              className={({ isActive }) => `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 font-manrope tracking-widest uppercase text-sm
-                ${isActive ? 'bg-primary/10 text-primary border-l-2 border-primary' : 'text-text-variant hover:bg-surface-container hover:text-text-primary'}`}>
-              <span className="material-symbols-outlined">{icon}</span>
-              {label}
+            <NavLink key={to} to={to} end={to === '/'}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 font-manrope text-sm font-semibold tracking-wide group
+                 ${isActive
+                   ? 'bg-primary/12 text-primary'
+                   : 'text-text-variant/70 hover:text-text-primary hover:bg-white/5'}`
+              }>
+              {({ isActive }) => (
+                <>
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200
+                    ${isActive ? 'bg-primary/20' : 'bg-transparent group-hover:bg-white/5'}`}>
+                    <span className={`material-symbols-outlined text-[18px] ${isActive ? 'text-primary' : ''}`}>{icon}</span>
+                  </div>
+                  <span>{label}</span>
+                  {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />}
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
 
-        <div className="p-4 border-t border-t-primary/10 space-y-3">
-          <div className="flex items-center gap-3">
-            <div className={`w-3 h-3 rounded-full flex-shrink-0 ${statusDot}`} />
-            <span className="text-xs font-mono uppercase tracking-widest text-text-variant">{statusLabel}</span>
+        {/* Status footer */}
+        <div className="p-4 border-t border-white/5 space-y-3">
+          <div className="flex items-center gap-2.5 px-1">
+            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDot}`} />
+            <span className="text-[11px] font-mono uppercase tracking-widest text-text-variant/80">{statusLabel}</span>
           </div>
           <ModeBadge mode={mode} connected={connected} onSwitch={onSwitchMode} />
-          {/* Show ESP32 IP hint */}
-          <p className="text-[10px] font-mono text-text-variant/50 truncate">
-            {ESP32_IP}
-          </p>
+          <p className="text-[9px] font-mono text-text-variant/30 truncate px-1">{ESP32_IP}</p>
         </div>
       </aside>
 
@@ -153,16 +171,33 @@ function Layout({ children, state, mode, connected, onLogout, onSwitchMode }) {
         </div>
       </main>
 
-      {/* Mobile Bottom Nav */}
-      <nav className="md:hidden glass-panel border-t border-t-primary/20 fixed bottom-0 left-0 right-0 z-20 flex justify-around p-3">
-        {[
-          { to: '/', icon: 'lock' }, { to: '/hardware', icon: 'developer_board' },
-          { to: '/logs', icon: 'list_alt' }, { to: '/settings', icon: 'settings' },
-        ].map(({ to, icon }) => (
-          <NavLink key={to} to={to} className={({ isActive }) => `flex flex-col items-center gap-1 ${isActive ? 'text-primary' : 'text-text-variant'}`}>
-            <span className="material-symbols-outlined">{icon}</span>
-          </NavLink>
-        ))}
+      {/* ── Mobile Bottom Nav ── */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 border-t border-white/8"
+           style={{background:'rgba(12,14,20,0.97)', backdropFilter:'blur(20px)'}}>
+        <div className="flex justify-around items-center px-2 py-1">
+          {[
+            { to: '/',         icon: 'lock',           label: 'Vault'    },
+            { to: '/hardware', icon: 'developer_board', label: 'Hardware' },
+            { to: '/logs',     icon: 'list_alt',        label: 'Logs'     },
+            { to: '/settings', icon: 'settings',        label: 'Settings' },
+          ].map(({ to, icon, label }) => (
+            <NavLink key={to} to={to} end={to === '/'}
+              className={({ isActive }) =>
+                `flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all duration-200
+                 ${isActive ? 'text-primary' : 'text-text-variant/50 hover:text-text-variant'}`
+              }>
+              {({ isActive }) => (
+                <>
+                  <div className={`w-10 h-6 rounded-full flex items-center justify-center transition-all duration-200
+                    ${isActive ? 'bg-primary/15' : ''}`}>
+                    <span className="material-symbols-outlined text-[20px]">{icon}</span>
+                  </div>
+                  <span className="text-[10px] font-mono tracking-wide">{label}</span>
+                </>
+              )}
+            </NavLink>
+          ))}
+        </div>
       </nav>
 
       {/* HUD Overlay */}
@@ -210,17 +245,22 @@ function App() {
   };
 
   // ── Poll ESP32 /status every POLL_INTERVAL_MS ────────────────────────────
-  const pollTimer = useRef(null);
+  const pollTimer  = useRef(null);
+  const failCount  = useRef(0);          // consecutive failure counter
+  const FAIL_THRESHOLD = 3;             // go offline only after 3 missed polls (~3 s)
 
   const pollStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${ESP32_IP}/status`, { signal: AbortSignal.timeout(2000) });
+      const res = await fetch(`${ESP32_IP}/status`, { signal: AbortSignal.timeout(3000) });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
 
+      // Success — reset strike counter and mark online
+      failCount.current = 0;
+
       let newLcdText = [' SYSTEM LOCKED  ', '   ENTER PIN:   '];
-      if (!data.isLocked)              newLcdText = [' ACCESS GRANTED ', '  DOOR OPENED   '];
-      else if (data.isBreached)        newLcdText = [' SYSTEM BREACHED', '  ALARM ACTIVE! '];
+      if (!data.isLocked)               newLcdText = [' ACCESS GRANTED ', '  DOOR OPENED   '];
+      else if (data.isBreached)         newLcdText = [' SYSTEM BREACHED', '  ALARM ACTIVE! '];
       else if (data.failedAttempts > 0) newLcdText = [' INCORRECT PIN  ', `  ATTEMPTS: ${data.failedAttempts}/3 `];
 
       setLiveState(prev => ({
@@ -235,7 +275,11 @@ function App() {
       }));
       setConnected(true);
     } catch {
-      setConnected(false);
+      // Only flip to offline after FAIL_THRESHOLD consecutive misses
+      failCount.current += 1;
+      if (failCount.current >= FAIL_THRESHOLD) {
+        setConnected(false);
+      }
     }
   }, []);
 
