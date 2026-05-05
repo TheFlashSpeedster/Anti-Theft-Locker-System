@@ -257,23 +257,7 @@ function Layout({ children, state, mode, connected, onLogout, onSwitchMode }) {
         </div>
       </nav>
 
-      {/* HUD Overlay */}
-      <div className="fixed bottom-20 md:bottom-8 right-8 glass-panel p-4 rounded-xl border border-primary/20 pointer-events-none z-30 hidden md:block">
-        <div className="space-y-3 font-mono text-xs uppercase tracking-wider">
-          <div className="flex items-center justify-between gap-6">
-            <span className="text-text-variant">Mode</span>
-            <span className={mode === 'test' ? 'text-orange-400' : 'text-secondary'}>{mode === 'test' ? 'TEST' : 'LIVE'}</span>
-          </div>
-          <div className="flex items-center justify-between gap-6">
-            <span className="text-text-variant">ESP32</span>
-            <span className={connected ? 'text-secondary' : 'text-yellow-400'}>{connected ? 'ONLINE' : 'OFFLINE'}</span>
-          </div>
-          <div className="flex items-center justify-between gap-6">
-            <span className="text-text-variant">Link</span>
-            <span className="text-secondary">LOCAL WiFi</span>
-          </div>
-        </div>
-      </div>
+
     </div>
   );
 }
