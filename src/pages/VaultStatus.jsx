@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
+
 
 // ── Segmented Bar ────────────────────────────────────────────────────────────
 function Bar({ segments = 6, filled, color }) {
@@ -12,7 +14,7 @@ function Bar({ segments = 6, filled, color }) {
   );
 }
 
-// ── Hardware Row ─────────────────────────────────────────────────────────────
+// ── Hardware Row (full-width table) ─────────────────────────────────────────
 function HWRow({ icon, name, pin, active, stateLabel, stateColor, pulse, controls, bar }) {
   const dot   = { primary: 'bg-primary', secondary: 'bg-secondary', tertiary: 'bg-tertiary' };
   const bdl   = { primary: 'border-l-primary', secondary: 'border-l-secondary', tertiary: 'border-l-tertiary' };
@@ -36,6 +38,67 @@ function HWRow({ icon, name, pin, active, stateLabel, stateColor, pulse, control
       </span>
       {bar && <div className="flex-1 hidden sm:block"><Bar {...bar} /></div>}
       {controls && <div className="ml-auto flex items-center gap-1.5 flex-shrink-0">{controls}</div>}
+    </div>
+  );
+}
+
+// ── Compact sidebar-only row (no controls, no bar, fits 288px) ────────────────
+function SidebarRow({ icon, name, active, stateLabel, stateColor, pulse, flash }) {
+  // accent border-left, indicator dot, badge — extended with amber + orange
+  const accent = {
+    primary:   'border-l-primary',
+    secondary: 'border-l-secondary',
+    tertiary:  'border-l-tertiary',
+    amber:     'border-l-yellow-400',
+    orange:    'border-l-orange-400',
+  };
+  const dot = {
+    primary:   'bg-primary',
+    secondary: 'bg-secondary',
+    tertiary:  'bg-tertiary',
+    amber:     'bg-yellow-400',
+    orange:    'bg-orange-400',
+  };
+  const iconCls = {
+    primary:   'text-primary',
+    secondary: 'text-secondary',
+    tertiary:  'text-tertiary',
+    amber:     'text-yellow-400',
+    orange:    'text-orange-400',
+  };
+  const badge = {
+    primary:   active ? 'text-primary   bg-primary/10   border-primary/25'   : 'text-text-variant bg-white/5 border-white/10',
+    secondary: active ? 'text-secondary bg-secondary/10 border-secondary/25' : 'text-text-variant bg-white/5 border-white/10',
+    tertiary:  active ? 'text-tertiary  bg-tertiary/10  border-tertiary/25'  : 'text-text-variant bg-white/5 border-white/10',
+    amber:     active ? 'text-yellow-400 bg-yellow-400/10 border-yellow-400/30' : 'text-text-variant bg-white/5 border-white/10',
+    orange:    active ? 'text-orange-400 bg-orange-400/10 border-orange-400/30' : 'text-text-variant bg-white/5 border-white/10',
+  };
+  const rowBg = {
+    tertiary: active ? 'bg-tertiary/5'  : 'bg-surface-container',
+    orange:   active ? 'bg-orange-500/5' : 'bg-surface-container',
+    amber:    active ? 'bg-yellow-500/5' : 'bg-surface-container',
+  };
+
+  const dotAnim = flash && active ? 'lcd-flash-red'
+                : pulse && active  ? 'animate-pulse'
+                : '';
+  const rowAnim = flash && active ? 'lcd-flash-orange' : '';
+
+  return (
+    <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border border-white/5 border-l-2 transition-all
+      ${active ? accent[stateColor] ?? 'border-l-white/10' : 'border-l-white/10'}
+      ${rowBg[stateColor] ?? 'bg-surface-container'}
+      ${rowAnim}`}>
+      <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0
+        ${active ? (dot[stateColor] ?? 'bg-white/20') : 'bg-white/20'}
+        ${dotAnim}`} />
+      <span className={`material-symbols-outlined text-[15px] flex-shrink-0
+        ${active ? (iconCls[stateColor] ?? 'text-text-variant') : 'text-text-variant/50'}`}>{icon}</span>
+      <span className="text-xs font-semibold flex-1 min-w-0 truncate font-manrope">{name}</span>
+      <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono uppercase tracking-wider border font-bold flex-shrink-0
+        ${badge[stateColor] ?? badge.secondary}`}>
+        {stateLabel}
+      </span>
     </div>
   );
 }
@@ -256,7 +319,10 @@ export default function VaultStatus({ state, connected, mode, canControl, onComm
 
   // ── NORMAL MODE ───────────────────────────────────────────────────────────
   return (
-    <div className="space-y-4 max-w-3xl mx-auto">
+    <div className="grid grid-cols-1 lg:grid-cols-[1fr_288px] gap-4 items-start">
+
+      {/* ── LEFT: Hero + Controls ── */}
+      <div className="space-y-4">
 
       {/* Hero */}
       <div className={`p-5 sm:p-7 rounded-2xl border transition-all duration-500 relative overflow-hidden
@@ -274,19 +340,12 @@ export default function VaultStatus({ state, connected, mode, canControl, onComm
               {displayLocked ? 'Secured' : 'Unlocked'}
             </h1>
             <p className="text-text-variant text-xs mt-1.5 font-light">{displayLocked ? 'SW-420 & keypad active.' : 'Door open — auto-lock in 5s.'}</p>
-          </div>
-          {/* LCD */}
-          <div className="flex-shrink-0 hidden sm:block">
-            <div className="p-1.5 bg-[#2d3024] border-4 border-[#1a1b15] rounded-lg shadow-xl">
-              <div className="bg-[#87ad34] px-2.5 py-2 rounded font-mono text-[#1a1b15] w-44 relative overflow-hidden">
-                <div className="absolute inset-0 opacity-[0.07] bg-[repeating-linear-gradient(0deg,#000_0px,#000_1px,transparent_1px,transparent_4px)] pointer-events-none" />
-                <div className="relative text-center">
-                  <div className="font-bold text-xs leading-tight whitespace-pre tracking-wider">{lcdText[0]}</div>
-                  <div className="font-bold text-xs leading-tight whitespace-pre tracking-wider mt-1">{lcdText[1]}</div>
-                </div>
-              </div>
-              <div className="mt-0.5 text-center text-[8px] text-text-variant font-mono">16×2 I²C · 0x27</div>
-            </div>
+            <Link to="/settings"
+              className="inline-flex items-center gap-1 mt-3 text-[10px] font-mono text-text-variant/50 hover:text-primary transition-colors group">
+              <span className="material-symbols-outlined text-[13px] group-hover:text-primary transition-colors">manage_accounts</span>
+              Change Password
+              <span className="material-symbols-outlined text-[11px] opacity-0 group-hover:opacity-100 transition-opacity">arrow_forward</span>
+            </Link>
           </div>
         </div>
         <div className="absolute -top-12 -right-12 w-48 h-48 bg-gradient-to-bl from-white/5 to-transparent rounded-full blur-3xl pointer-events-none" />
@@ -457,58 +516,171 @@ export default function VaultStatus({ state, connected, mode, canControl, onComm
               </div>
             </div>
           )}
-        </div>
-      </div>
+        </div>{/* closes p-3 content */}
+      </div>{/* closes glass-panel */}
+      </div>{/* end left col */}
 
-      {/* Hardware Monitor */}
-      <div className="glass-panel rounded-2xl overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-white/5 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary text-[14px]">developer_board</span>
-            <span className="text-[10px] font-mono uppercase tracking-widest text-text-variant font-bold">Hardware Monitor</span>
+      {/* ── RIGHT: Hardware Monitor (sticky sidebar) ── */}
+      <div className="lg:sticky lg:top-0 space-y-3">
+
+        {/* Hardware Monitor */}
+        <div className="glass-panel rounded-2xl overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-white/5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary text-[14px]">developer_board</span>
+              <span className="text-[10px] font-mono uppercase tracking-widest text-text-variant font-bold">Hardware</span>
+            </div>
+            <div className="flex gap-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-tertiary/60" />
+              <div className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-pulse" />
+              <div className="w-1.5 h-1.5 rounded-full bg-secondary/60" />
+            </div>
           </div>
-          <div className="flex gap-1">
-            <div className="w-2 h-2 rounded-full bg-tertiary/60" />
-            <div className="w-2 h-2 rounded-full bg-primary/60 animate-pulse" />
-            <div className="w-2 h-2 rounded-full bg-secondary/60" />
+          <div className="p-2.5 space-y-1.5">
+
+            {/* Main Door — green=locked(good), cyan=open(attention) */}
+            <SidebarRow icon={isLocked ? 'lock' : 'lock_open'} name="Main Door"
+              active={true}
+              stateLabel={isLocked ? 'Locked' : 'Open'}
+              stateColor={isLocked ? 'secondary' : 'primary'} />
+
+            {/* Trapdoor — green=sealed(good), red=open(alert)+flash */}
+            <SidebarRow icon={isSecretCompartmentOpen ? 'inventory_2' : 'inventory'} name="Trapdoor"
+              active={true}
+              stateLabel={isSecretCompartmentOpen ? 'Open' : 'Sealed'}
+              stateColor={isSecretCompartmentOpen ? 'tertiary' : 'secondary'}
+              flash={isSecretCompartmentOpen} />
+
+            {/* Buzzer — green=silent(good), red=alarming+flash */}
+            <SidebarRow icon="campaign" name="Buzzer"
+              active={true}
+              stateLabel={buzzerOn ? 'Alarming' : 'Silent'}
+              stateColor={buzzerOn ? 'tertiary' : 'secondary'}
+              flash={buzzerOn} />
+
+            {/* SW-420 — green=stable(good), red=triggered+pulse */}
+            <SidebarRow icon="sensors" name="SW-420"
+              active={true}
+              stateLabel={vibrationDetected ? 'Triggered' : 'Stable'}
+              stateColor={vibrationDetected ? 'tertiary' : 'secondary'}
+              pulse={vibrationDetected} />
+
+            {/* Keypad — green=OK, amber=1/3, orange=2/3, red=3/3 */}
+            <SidebarRow icon="dialpad" name="Keypad"
+              active={true}
+              stateLabel={failedAttempts > 0 ? `${failedAttempts}/3` : 'OK'}
+              stateColor={
+                failedAttempts >= 3 ? 'tertiary'
+                : failedAttempts === 2 ? 'orange'
+                : failedAttempts === 1 ? 'amber'
+                : 'secondary'
+              }
+              pulse={failedAttempts > 0} />
+
+            {/* WiFi — green=live(good), orange=offline */}
+            <SidebarRow icon={connected ? 'wifi' : 'wifi_off'} name="WiFi"
+              active={true}
+              stateLabel={connected ? 'Live' : 'Offline'}
+              stateColor={connected ? 'secondary' : 'orange'} />
+
           </div>
         </div>
-        <div className="p-3 space-y-2">
-          <HWRow icon={isLocked ? 'lock' : 'lock_open'} name="Main Door" pin="Servo 1 · GPIO 18"
-            active={!isLocked} stateLabel={isLocked ? 'Locked' : 'Unlocked'} stateColor="primary"
-            bar={{ segments: 6, filled: isLocked ? 0 : 6, color: 'primary' }}
-            controls={<Pill label={isLocked ? 'Unlock' : 'Lock'} icon={isLocked ? 'lock_open' : 'lock'}
-              color={isLocked ? 'primary' : 'secondary'} loading={isP('/unlock') || isP('/lock')}
-              onClick={isLocked ? exec('/unlock') : exec('/lock')} />} />
 
-          <HWRow icon={isSecretCompartmentOpen ? 'inventory_2' : 'inventory'} name="Trapdoor" pin="Servo 2 · GPIO 19"
-            active={isSecretCompartmentOpen} stateLabel={isSecretCompartmentOpen ? 'Open' : 'Sealed'} stateColor={isSecretCompartmentOpen ? 'tertiary' : 'secondary'}
-            bar={{ segments: 6, filled: isSecretCompartmentOpen ? 6 : 0, color: 'tertiary' }}
-            controls={<Pill label={isSecretCompartmentOpen ? 'Seal' : 'Open'} icon={isSecretCompartmentOpen ? 'inventory' : 'inventory_2'}
-              color={isSecretCompartmentOpen ? 'secondary' : 'primary'} loading={isP('/trapdoor_open') || isP('/trapdoor_close')}
-              onClick={isSecretCompartmentOpen ? exec('/trapdoor_close') : exec('/trapdoor_open')} />} />
+        {/* LCD preview — alarm-aware */}
+        {(() => {
+          const alarm  = isBreached || failedAttempts >= 3;
+          const warn2  = !alarm && failedAttempts === 2;
+          const warn1  = !alarm && !warn2 && failedAttempts === 1;
+          const normal = !alarm && !warn2 && !warn1;
 
-          <HWRow icon="campaign" name="Buzzer" pin="Piezo · GPIO 23"
-            active={buzzerOn} stateLabel={buzzerOn ? 'Alarming' : 'Silent'} stateColor="tertiary" pulse={buzzerOn}
-            bar={{ segments: 6, filled: buzzerOn ? 6 : 0, color: 'tertiary' }}
-            controls={<Pill label={buzzerOn ? 'Off' : 'On'} icon={buzzerOn ? 'volume_off' : 'campaign'}
-              color={buzzerOn ? 'secondary' : 'tertiary'} loading={isP('/buzzer_on') || isP('/buzzer_off')}
-              onClick={buzzerOn ? exec('/buzzer_off') : exec('/buzzer_on')} />} />
+          // LCD screen colour + text colour per state
+          const screenBg  = alarm  ? '#c0392b'
+                          : warn2  ? '#e67e22'
+                          : warn1  ? '#d4a017'
+                          : '#87ad34';
+          const screenTxt = alarm  ? '#ffcccc'
+                          : warn2  ? '#fff3e0'
+                          : warn1  ? '#fff8dc'
+                          : '#1a1b15';
 
-          <HWRow icon="sensors" name="SW-420" pin="Vibration · GPIO 5"
-            active={vibrationDetected} stateLabel={vibrationDetected ? 'Triggered!' : 'Stable'} stateColor="tertiary" pulse={vibrationDetected}
-            bar={{ segments: 6, filled: vibrationDetected ? 6 : 1, color: vibrationDetected ? 'tertiary' : 'secondary' }} />
+          // Outer bezel colour
+          const bezelBg   = alarm  ? '#3a1a1a'
+                          : warn2  ? '#3a2810'
+                          : warn1  ? '#2e2510'
+                          : '#2d3024';
 
-          <HWRow icon="dialpad" name="Keypad 4×4" pin="GPIO 13,12,14,27..."
-            active={failedAttempts > 0} stateLabel={failedAttempts > 0 ? `${failedAttempts}/3 Fails` : 'No Fails'}
-            stateColor={failedAttempts >= 3 ? 'tertiary' : failedAttempts > 0 ? 'primary' : 'secondary'}
-            bar={{ segments: 3, filled: failedAttempts, color: 'tertiary' }} />
+          // Panel border + glow
+          const panelCls  = alarm
+            ? 'border border-tertiary/60 shadow-[0_0_18px_rgba(255,80,80,0.35)]'
+            : warn2
+            ? 'border border-orange-500/50 shadow-[0_0_12px_rgba(234,88,12,0.25)]'
+            : warn1
+            ? 'border border-yellow-500/40 shadow-[0_0_8px_rgba(202,138,4,0.15)]'
+            : 'border border-white/5';
 
-          <HWRow icon="wifi" name="ESP32 WiFi" pin="WROOM-32 · 2.4 GHz"
-            active={connected} stateLabel={connected ? 'Live' : 'Offline'} stateColor="secondary"
-            bar={{ segments: 6, filled: connected ? 5 : 0, color: 'secondary' }} />
-        </div>
-      </div>
+          // Animation class on the screen div
+          const screenAnim = alarm  ? 'lcd-flash-red'
+                           : warn2  ? 'lcd-flash-orange'
+                           : warn1  ? 'lcd-pulse-amber'
+                           : '';
+
+          return (
+            <>
+              {/* Keyframe animations injected once */}
+              <style>{`
+                @keyframes lcd-flash-red {
+                  0%,100% { opacity: 1; }
+                  50%      { opacity: 0.25; }
+                }
+                @keyframes lcd-flash-orange {
+                  0%,100% { opacity: 1; }
+                  50%      { opacity: 0.45; }
+                }
+                @keyframes lcd-pulse-amber {
+                  0%,100% { opacity: 1; }
+                  50%      { opacity: 0.75; }
+                }
+                .lcd-flash-red    { animation: lcd-flash-red    0.6s ease-in-out infinite; }
+                .lcd-flash-orange { animation: lcd-flash-orange  1s ease-in-out infinite; }
+                .lcd-pulse-amber  { animation: lcd-pulse-amber   1.8s ease-in-out infinite; }
+              `}</style>
+
+              <div className={`glass-panel rounded-2xl p-3.5 transition-all duration-500 ${panelCls}`}>
+                {/* Label row */}
+                <div className="flex items-center justify-between mb-2.5">
+                  <p className="text-[9px] font-mono uppercase tracking-widest text-text-variant">LCD · 16×2</p>
+                  {!normal && (
+                    <span className={`text-[8px] font-mono uppercase tracking-widest font-bold px-1.5 py-0.5 rounded border
+                      ${alarm ? 'text-tertiary border-tertiary/40 bg-tertiary/10'
+                              : warn2 ? 'text-orange-400 border-orange-500/40 bg-orange-500/10'
+                              : 'text-yellow-400 border-yellow-500/40 bg-yellow-500/10'}`}>
+                      {alarm ? '⚠ BREACH' : warn2 ? '⚠ 2/3' : '⚠ 1/3'}
+                    </span>
+                  )}
+                </div>
+
+                {/* Bezel */}
+                <div className={`p-1 border-4 rounded-lg shadow-lg transition-all duration-500`}
+                     style={{ backgroundColor: bezelBg, borderColor: bezelBg }}>
+
+                  {/* Screen */}
+                  <div className={`px-2 py-1.5 rounded font-mono relative overflow-hidden transition-all duration-500 ${screenAnim}`}
+                       style={{ backgroundColor: screenBg, color: screenTxt }}>
+                    <div className="absolute inset-0 opacity-[0.07] bg-[repeating-linear-gradient(0deg,#000_0px,#000_1px,transparent_1px,transparent_4px)] pointer-events-none" />
+                    <div className="relative text-center">
+                      <div className="font-bold text-[10px] leading-tight whitespace-pre tracking-wider">{lcdText[0]}</div>
+                      <div className="font-bold text-[10px] leading-tight whitespace-pre tracking-wider mt-1">{lcdText[1]}</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-0.5 text-center text-[7px] font-mono" style={{ color: '#6b7280' }}>I²C · 0x27</div>
+                </div>
+              </div>
+            </>
+          );
+        })()}
+
+      </div>{/* end right col */}
 
     </div>
   );

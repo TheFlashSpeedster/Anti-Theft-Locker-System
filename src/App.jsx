@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import { ESP32_IP, POLL_INTERVAL_MS } from './firebase';
+import { loadLogs, mergeLogs, clearAllLogs, pruneIfNeeded } from './db';
+
 import Login from './pages/Login';
 import VaultStatus from './pages/VaultStatus';
 import HardwareConfig from './pages/HardwareConfig';
@@ -27,6 +29,56 @@ function loadTestState() {
 function saveTestState(s) {
   const { logs: _, ...withoutLogs } = s;
   localStorage.setItem('test_state', JSON.stringify(withoutLogs));
+}
+
+function useClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
+}
+
+const DAYS  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function Clock({ compact = false }) {
+  const now  = useClock();
+  const hh   = String(now.getHours()).padStart(2, '0');
+  const mm   = String(now.getMinutes()).padStart(2, '0');
+  const ss   = String(now.getSeconds()).padStart(2, '0');
+  const day  = DAYS[now.getDay()];
+  const date = now.getDate();
+  const mon  = MONTHS[now.getMonth()];
+  const yr   = now.getFullYear();
+
+  if (compact) {
+    // Top-bar version — single row
+    return (
+      <div className="hidden md:flex flex-col items-end leading-none">
+        <span className="font-mono text-sm font-bold text-text-primary tracking-widest tabular-nums">
+          {hh}<span className="animate-pulse opacity-70">:</span>{mm}<span className="animate-pulse opacity-70">:</span>{ss}
+        </span>
+        <span className="font-mono text-[9px] text-text-variant/50 tracking-wider mt-0.5">
+          {day.slice(0,3).toUpperCase()} · {String(date).padStart(2,'0')} {mon.toUpperCase()} {yr}
+        </span>
+      </div>
+    );
+  }
+
+  // Sidebar version — larger display
+  return (
+    <div className="px-1">
+      <div className="font-mono text-xl font-black text-text-primary tracking-widest tabular-nums leading-none">
+        {hh}<span className="animate-pulse opacity-60 text-primary">:</span>{mm}<span className="animate-pulse opacity-60 text-primary">:</span>
+        <span className="text-primary">{ss}</span>
+      </div>
+      <div className="font-mono text-[10px] text-text-variant/50 tracking-wider mt-1">
+        {day} · {String(date).padStart(2,'0')} {mon} {yr}
+      </div>
+    </div>
+  );
 }
 
 // ── Mode badge ───────────────────────────────────────────────────────────────
@@ -126,6 +178,9 @@ function Layout({ children, state, mode, connected, onLogout, onSwitchMode }) {
           </div>
           <ModeBadge mode={mode} connected={connected} onSwitch={onSwitchMode} />
           <p className="text-[9px] font-mono text-text-variant/30 truncate px-1">{ESP32_IP}</p>
+          <div className="mt-3 pt-3 border-t border-white/5">
+            <Clock />
+          </div>
         </div>
       </aside>
 
@@ -137,12 +192,14 @@ function Layout({ children, state, mode, connected, onLogout, onSwitchMode }) {
             <h2 className="font-manrope font-semibold tracking-widest text-text-primary uppercase md:hidden">
               Aether Sentinel
             </h2>
-            <div className="hidden md:flex items-center gap-2 text-text-variant font-mono text-sm uppercase tracking-widest">
+            <div className="hidden md:flex items-center gap-3 text-text-variant font-mono text-sm uppercase tracking-widest">
               <span className="material-symbols-outlined text-[18px]">terminal</span>
               {getPageName()}
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
+            <Clock compact />
+            <div className="w-px h-6 bg-white/10 hidden md:block" />
             <ModeBadge mode={mode} connected={connected} onSwitch={onSwitchMode} />
             <button onClick={onLogout} title="Logout"
               className="text-text-variant hover:text-tertiary transition-colors">
@@ -290,11 +347,27 @@ function App() {
       if (!res.ok) return;
       const data = await res.json();
       if (Array.isArray(data.logs)) {
-        const logsArray = [...data.logs].reverse().slice(0, 50).map((l, i) => ({ id: i, ...l }));
-        setLiveState(prev => ({ ...prev, logs: logsArray }));
+        // 1. Merge fresh ESP32 logs into IndexedDB (idempotent)
+        await mergeLogs(data.logs);
+        await pruneIfNeeded();
+
+        // 2. Read full history from IndexedDB (newest-first)
+        const all = await loadLogs();
+        setLiveState(prev => ({ ...prev, logs: all.map((l, i) => ({ id: i, ...l })) }));
       }
     } catch { /* silent */ }
   }, []);
+
+  // Load persisted logs from IndexedDB once on mount (before first ESP32 poll)
+  useEffect(() => {
+    if (mode !== 'live') return;
+    loadLogs()
+      .then(all => {
+        if (all.length > 0)
+          setLiveState(prev => ({ ...prev, logs: all.map((l, i) => ({ id: i, ...l })) }));
+      })
+      .catch(() => {});
+  }, [mode]);
 
   useEffect(() => {
     if (mode !== 'live') return;
@@ -393,7 +466,10 @@ function App() {
         <Routes>
           <Route path="/"         element={<VaultStatus state={activeState} connected={connected} mode={mode} canControl={canControl} onCommand={sendCommand} />} />
           <Route path="/hardware" element={<HardwareConfig state={activeState} />} />
-          <Route path="/logs"     element={<EventLog logs={activeState.logs} />} />
+          <Route path="/logs"     element={<EventLog logs={activeState.logs} onClearLogs={async () => {
+            await clearAllLogs();
+            setLiveState(prev => ({ ...prev, logs: [] }));
+          }} />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </Layout>
