@@ -212,11 +212,12 @@ export default function VaultStatus({ state, connected, mode, canControl, onComm
       return;
     }
 
-    // Trapdoor open / close — wait for isSecretCompartmentOpen confirmation
+    // Trapdoor open / close — optimistic holds until poll confirms; pending clears on response
     if (c === '/trapdoor_open' || c === '/trapdoor_close') {
-      armOptimistic(setOptimisticCompartment, compartmentClearTimer, c === '/trapdoor_open' ? true : false);
+      armOptimistic(setOptimisticCompartment, compartmentClearTimer, c === '/trapdoor_open');
       setPending(c);
       await onCommand(c);
+      setPending(null);   // ← unblock button immediately; optimistic keeps the UI correct
       return;
     }
 
