@@ -492,6 +492,32 @@ export default function VaultStatus({ state, connected, mode, canControl, onComm
             </div>
           </div>
 
+          {/* Sensors */}
+          <div>
+            <p className="text-[9px] font-mono uppercase tracking-widest text-text-variant mb-2 px-0.5">🔔 Sensors</p>
+            <button
+              onClick={isTest ? exec('__sim_vibration') : exec('/sim_vib')}
+              disabled={!canControl || vibrationDetected}
+              className="w-full flex items-center gap-3 px-5 py-3 rounded-xl border-2 border-yellow-500/20 bg-surface-container
+                hover:border-yellow-500/50 hover:bg-yellow-500/8 transition-all duration-200 group disabled:opacity-40">
+              <span className={`material-symbols-outlined text-xl text-yellow-400 transition-colors
+                ${vibrationDetected ? 'animate-pulse' : 'group-hover:text-yellow-300'}`}>
+                {vibrationDetected ? 'sensors_off' : 'vibration'}
+              </span>
+              <div className="text-left flex-1">
+                <p className="text-xs font-black uppercase tracking-wider font-manrope text-yellow-400">
+                  {vibrationDetected ? 'Tamper Active' : 'Simulate Vibration'}
+                </p>
+                <p className="text-[9px] font-mono text-text-variant/50">
+                  {vibrationDetected ? 'Latched — reset to clear' : 'SW-420 tamper trigger · buzzer + alert'}
+                </p>
+              </div>
+              {!vibrationDetected && (
+                <span className="material-symbols-outlined text-[14px] text-yellow-500/30 group-hover:text-yellow-400/60 transition-colors">chevron_right</span>
+              )}
+            </button>
+          </div>
+
           {/* TEST Mode simulation inputs */}
           {isTest && (
             <div>

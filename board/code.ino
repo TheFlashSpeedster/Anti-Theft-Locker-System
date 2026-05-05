@@ -504,6 +504,26 @@ void handleWebCommand(String text) {
     resetAlert();
     return;
 
+  } else if (text == "/sim_vib") {
+    // Virtual vibration trigger (for demo / broken sensor fallback)
+    unsigned long now = millis();
+    if (now - systemStartTime > STARTUP_GRACE_MS) {
+      vibAlertTriggered = true;
+      vibLastTrigger = now;
+      alertTriggered = true;
+      digitalWrite(BUZZER_PIN, HIGH);
+      lcd.clear();
+      lcd.setCursor(0, 0); lcd.print(" TAMPER ALERT!  ");
+      lcd.setCursor(0, 1); lcd.print(" VIB DETECTED   ");
+      queueTelegram("⚡ <b>VIBRATION ALERT — Simulated Trigger</b>\n"
+                    "SW-420 tamper event triggered via dashboard.\n"
+                    "📊 Intrusion detection active.\n"
+                    "• Enter correct PIN to dismiss.");
+      action = "VIBRATION SIMULATED — tamper alert latched";
+    } else {
+      action = "Sim vib ignored (startup grace)";
+    }
+
   } else if (text == "/status") {
     action = "Status refreshed at " + getCurrentTime();
 
