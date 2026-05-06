@@ -44,38 +44,47 @@ const DAYS  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Satu
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 function Clock({ compact = false }) {
-  const now  = useClock();
-  const hh   = String(now.getHours()).padStart(2, '0');
-  const mm   = String(now.getMinutes()).padStart(2, '0');
-  const ss   = String(now.getSeconds()).padStart(2, '0');
-  const day  = DAYS[now.getDay()];
-  const date = now.getDate();
-  const mon  = MONTHS[now.getMonth()];
-  const yr   = now.getFullYear();
+  const now   = useClock();
+  const raw   = now.getHours();
+  const ampm  = raw >= 12 ? 'PM' : 'AM';
+  const hh    = String(raw % 12 || 12).padStart(2, '0');
+  const mm    = String(now.getMinutes()).padStart(2, '0');
+  const ss    = String(now.getSeconds()).padStart(2, '0');
+  const day   = DAYS[now.getDay()];
+  const date  = now.getDate();
+  const mon   = MONTHS[now.getMonth()];
+  const yr    = now.getFullYear();
 
   if (compact) {
-    // Top-bar version — single row
     return (
-      <div className="hidden md:flex flex-col items-end leading-none">
-        <span className="font-mono text-sm font-bold text-text-primary tracking-widest tabular-nums">
-          {hh}<span className="animate-pulse opacity-70">:</span>{mm}<span className="animate-pulse opacity-70">:</span>{ss}
-        </span>
-        <span className="font-mono text-[9px] text-text-variant/50 tracking-wider mt-0.5">
-          {day.slice(0,3).toUpperCase()} · {String(date).padStart(2,'0')} {mon.toUpperCase()} {yr}
+      <div className="flex flex-col items-end leading-none">
+        <div className="flex items-baseline gap-1.5 font-mono font-bold text-text-primary tabular-nums">
+          <span className="text-sm tracking-widest">
+            {hh}<span className="animate-pulse opacity-70">:</span>{mm}
+            <span className="hidden sm:inline"><span className="animate-pulse opacity-70">:</span>{ss}</span>
+          </span>
+          <span className="text-xs font-black text-primary">{ampm}</span>
+        </div>
+        <span className="hidden md:block font-mono text-[9px] text-text-variant/50 tracking-wider mt-0.5">
+          {day.slice(0,3).toUpperCase()} · {String(date).padStart(2,'0')} {mon.toUpperCase()} {yr} · IST
         </span>
       </div>
     );
   }
 
-  // Sidebar version — larger display
+  // Sidebar version
   return (
     <div className="px-1">
-      <div className="font-mono text-xl font-black text-text-primary tracking-widest tabular-nums leading-none">
-        {hh}<span className="animate-pulse opacity-60 text-primary">:</span>{mm}<span className="animate-pulse opacity-60 text-primary">:</span>
-        <span className="text-primary">{ss}</span>
+      <div className="flex items-baseline gap-2 font-mono font-black tracking-widest tabular-nums leading-none">
+        <span className="text-xl text-text-primary">
+          {hh}<span className="animate-pulse opacity-60 text-primary">:</span>{mm}
+          <span className="animate-pulse opacity-60 text-primary">:</span>
+          <span className="text-primary">{ss}</span>
+        </span>
+        <span className="text-base font-black text-primary">{ampm}</span>
       </div>
       <div className="font-mono text-[10px] text-text-variant/50 tracking-wider mt-1">
-        {day} · {String(date).padStart(2,'0')} {mon} {yr}
+        {day} · {String(date).padStart(2,'0')} {mon} {yr} · IST
       </div>
     </div>
   );
@@ -187,7 +196,7 @@ function Layout({ children, state, mode, connected, onLogout, onSwitchMode }) {
       {/* Main Content */}
       <main className="flex-1 flex flex-col relative z-0 overflow-y-auto">
         {/* Top App Bar */}
-        <header className="h-16 glass-panel border-b border-b-primary/10 flex items-center justify-between px-4 md:px-6 sticky top-0 z-20">
+        <header className="glass-panel border-b border-b-primary/10 flex items-center justify-between px-12 py-[10px] sticky top-0 z-20">
           <div className="flex items-center gap-4">
             <h2 className="font-manrope font-semibold tracking-widest text-text-primary uppercase md:hidden">
               Aether Sentinel
