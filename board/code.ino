@@ -44,7 +44,7 @@ const int TELEGRAM_TIMEOUT   = 3000;
 #define SERVO1_PIN    18
 #define SERVO2_PIN    19
 #define BUZZER_PIN    23
-#define VIBRATION_PIN  15
+#define VIBRATION_PIN  5
 
 // ===================== KEYPAD SETUP ========================
 const byte ROWS = 4;
