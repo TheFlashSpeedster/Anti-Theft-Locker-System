@@ -1,32 +1,51 @@
-# Anti Theft Locker System
+# Smart Locker Security System using ESP32
 
-- Detects Wrong Attempt (Wrong PIN)
-- Detects Force Breach (Vibration)
-- Secures Valuables on Breach
-- Sends Notification on Telegram or WhatsApp or SMS
-- Web Control Panel (Change PIN, Check Status, Event Logs, etc.)
+## 📌 Overview
+This project is an ESP32-based smart anti-theft locker system.
 
-## Components 
-- ESP32-WROOM (Wifi + Bluetooth)
-- LCD 16x2 Display
-- I2C Module for LCD
-- Servo Motor (x2)
-- 4x4 Keypad
-- Vibration Sensor SW-420
+Features:
+- Password protection using keypad
+- LCD display feedback
+- Servo motor door locking
+- Trapdoor security system
+- Vibration detection anti-theft system
+- Telegram notifications
+- Web dashboard control
+- Buzzer alarm system
+
+## 🧩 Components Used
+- ESP32 Development Board
+- 4x4 Matrix Keypad
+- 16x2 I2C LCD Display
+- Servo Motor x2
+- SW-420 Vibration Sensor
 - Buzzer
-- LED (Red)
+- Breadboard
+- Jumper Wires
+- Wooden Locker Structure
 
-# Technologies
-- ESP32
-- Arduino IDE
-- C++
-- React with Firebase (for connecting esp)
+- ## ⚙️ Features
+- Smart password authentication
+- Automatic trapdoor security
+- Tamper detection
+- Telegram alert system
+- WiFi-based local control
+- Web API support
 
-# Libraries Used
-- ESP32
-- LiquidCrystal_I2C
-- ArduinoJson
-- Keypad
-- Wifi
-- WebServer
-- Servo
+- ## 🔌 ESP32 Pin Connections
+
+| Component | ESP32 Pin |
+|---|---|
+| LCD SDA | GPIO 21 |
+| LCD SCL | GPIO 22 |
+| Servo 1 | GPIO 18 |
+| Servo 2 | GPIO 19 |
+| Buzzer | GPIO 23 |
+| Vibration Sensor | GPIO 15 |
+
+## 🚀 Future Scope
+- IoT monitoring
+- Face recognition
+- GSM alerts
+- Mobile app control
+- OTP verification
