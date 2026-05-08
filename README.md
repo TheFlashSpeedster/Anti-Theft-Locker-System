@@ -14,7 +14,7 @@ Features:
 - Buzzer alarm system
 
 ## 🧩 Components Used
-- ESP32 Development Board
+- ESP32-WROOM Development Board
 - 4x4 Matrix Keypad
 - 16x2 I2C LCD Display
 - Servo Motor x2
@@ -36,12 +36,12 @@ Features:
 
 | Component | ESP32 Pin |
 |---|---|
-| LCD SDA | GPIO 21 |
-| LCD SCL | GPIO 22 |
-| Servo 1 | GPIO 18 |
-| Servo 2 | GPIO 19 |
-| Buzzer | GPIO 23 |
-| Vibration Sensor | GPIO 15 |
+| LCD SDA | D21 |
+| LCD SCL | D22 |
+| Servo 1 | D18 |
+| Servo 2 | D19 |
+| Buzzer/LED | D23 |
+| Vibration Sensor | D5 |
 
 ## 🚀 Future Scope
 - IoT monitoring
