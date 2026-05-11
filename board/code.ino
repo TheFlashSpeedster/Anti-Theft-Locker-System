@@ -18,15 +18,15 @@
 #include <time.h>
 
 // ===================== CONFIGURATION =====================
-const char *WIFI_SSID     = "hello123";
-const char *WIFI_PASSWORD = "poco1234";
+const char *WIFI_SSID     = "WIFI_SSID";
+const char *WIFI_PASSWORD = "WIFI_PASSWORD";
 
 // ── Security (default; overwritten from flash on boot) ────
 String CORRECT_PASSWORD = "2580";
 
 // ── Telegram (set via POST /config or web dashboard) ──────
-String TELEGRAM_TOKEN   = "8510354203:AAGs0hyHpmpxIRAoA1gjj6-YbP8vMG_N_8c";
-String TELEGRAM_CHAT_ID = "5524391658";
+String TELEGRAM_TOKEN   = "TELEGRAM_BOT_TOKEN";
+String TELEGRAM_CHAT_ID = "TELEGRAM_USER_ID";
 
 // ── Servo positions ───────────────────────────────────────
 const int SERVO1_LOCKED    = 0;
