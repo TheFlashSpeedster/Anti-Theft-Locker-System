@@ -143,7 +143,7 @@ function BigBtn({ label, sub, icon, onClick, color = 'secondary', active = false
 
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function VaultStatus({ state, connected, mode, canControl, onCommand }) {
-  const { isLocked, isSecretCompartmentOpen, failedAttempts, buzzerOn, isBreached, vibrationDetected, lcdText } = state;
+  const { isLocked, isSecretCompartmentOpen, failedAttempts, buzzerOn, isBreached, vibrationDetected, lcdText, buzzerEnabled = true } = state;
   const [pending, setPending] = useState(null);
 
   // ── Optimistic states — UI moves instantly, cleared when Firebase confirms ──
@@ -308,7 +308,8 @@ export default function VaultStatus({ state, connected, mode, canControl, onComm
             <span className="text-[10px] font-mono uppercase tracking-widest text-text-variant font-bold">Live Status</span>
           </div>
           <div className="p-3 space-y-2">
-            <HWRow icon="campaign" name="Buzzer" pin="GPIO 2" active={buzzerOn} stateLabel={buzzerOn ? 'Alarming' : 'Silent'} stateColor="tertiary" pulse={buzzerOn} bar={{ segments: 6, filled: buzzerOn ? 6 : 0, color: 'tertiary' }} />
+            <HWRow icon="campaign" name="Buzzer" pin="GPIO 2" active={buzzerOn && buzzerEnabled} stateLabel={buzzerOn && buzzerEnabled ? 'Alarming' : buzzerOn ? 'Muted' : 'Silent'} stateColor={buzzerOn && buzzerEnabled ? 'tertiary' : 'secondary'} pulse={buzzerOn && buzzerEnabled} bar={{ segments: 6, filled: buzzerOn && buzzerEnabled ? 6 : 0, color: 'tertiary' }} />
+            <HWRow icon="wb_iridescent" name="Alert LED" pin="GPIO 23" active={buzzerOn} stateLabel={buzzerOn ? 'Flashing' : 'Off'} stateColor="primary" pulse={buzzerOn} bar={{ segments: 6, filled: buzzerOn ? 6 : 0, color: 'primary' }} />
             <HWRow icon="sensors" name="SW-420" pin="GPIO 5" active={vibrationDetected} stateLabel={vibrationDetected ? 'Triggered' : 'Stable'} stateColor="tertiary" pulse={vibrationDetected} bar={{ segments: 6, filled: vibrationDetected ? 6 : 1, color: 'tertiary' }} />
             <HWRow icon={isLocked ? 'lock' : 'lock_open'} name="Main Door" pin="Servo 1 · GPIO 18" active={!isLocked} stateLabel={isLocked ? 'Locked' : 'Open'} stateColor="primary" bar={{ segments: 6, filled: isLocked ? 0 : 6, color: 'primary' }} />
             <HWRow icon={isSecretCompartmentOpen ? 'inventory_2' : 'inventory'} name="Trapdoor" pin="Servo 2 · GPIO 19" active={isSecretCompartmentOpen} stateLabel={isSecretCompartmentOpen ? 'Deployed' : 'Sealed'} stateColor="tertiary" bar={{ segments: 6, filled: isSecretCompartmentOpen ? 6 : 0, color: 'tertiary' }} />
@@ -578,11 +579,18 @@ export default function VaultStatus({ state, connected, mode, canControl, onComm
               stateColor={isSecretCompartmentOpen ? 'tertiary' : 'secondary'}
               flash={isSecretCompartmentOpen} />
 
-            {/* Buzzer — green=silent(good), red=alarming+flash */}
+            {/* Buzzer — green=silent(good), red=alarming+flash, amber=muted */}
             <SidebarRow icon="campaign" name="Buzzer"
               active={true}
-              stateLabel={buzzerOn ? 'Alarming' : 'Silent'}
-              stateColor={buzzerOn ? 'tertiary' : 'secondary'}
+              stateLabel={buzzerOn && buzzerEnabled ? 'Alarming' : buzzerOn ? 'Muted' : 'Silent'}
+              stateColor={buzzerOn && buzzerEnabled ? 'tertiary' : buzzerOn ? 'amber' : 'secondary'}
+              flash={buzzerOn && buzzerEnabled} />
+
+            {/* Alert LED — green=off(good), red=flashing+flash */}
+            <SidebarRow icon="wb_iridescent" name="Alert LED"
+              active={true}
+              stateLabel={buzzerOn ? 'Flashing' : 'Off'}
+              stateColor={buzzerOn ? 'primary' : 'secondary'}
               flash={buzzerOn} />
 
             {/* SW-420 — green=stable(good), red=triggered+pulse */}

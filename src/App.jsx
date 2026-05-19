@@ -13,11 +13,13 @@ import Settings from './pages/Settings';
 const DEFAULT_LIVE_STATE = {
   isLocked: true, isSecretCompartmentOpen: false, failedAttempts: 0,
   buzzerOn: false, isBreached: false, vibrationDetected: false,
+  buzzerEnabled: true,
   lcdText: [' SYSTEM LOCKED  ', '   ENTER PIN:   '], logs: [],
 };
 const DEFAULT_TEST_STATE = {
   isLocked: true, isSecretCompartmentOpen: false, failedAttempts: 0,
   buzzerOn: false, isBreached: false, vibrationDetected: false,
+  buzzerEnabled: true,
   lcdText: [' SYSTEM LOCKED  ', '   ENTER PIN:   '],
   logs: [{ id: 1, type: 'info', message: '[TEST] System initialized. Sandbox mode active.', timestamp: new Date().toLocaleString() }],
 };
@@ -321,6 +323,7 @@ function App() {
         buzzerOn:                data.buzzerOn                ?? prev.buzzerOn,
         isBreached:              data.isBreached              ?? prev.isBreached,
         vibrationDetected:       data.vibrationDetected       ?? prev.vibrationDetected,
+        buzzerEnabled:           data.buzzerEnabled           ?? prev.buzzerEnabled,
         lcdText: newLcdText,
       }));
       setConnected(true);
@@ -415,17 +418,26 @@ function App() {
           addTestLog('info', '[TEST] Trapdoor flip complete'); break;
         case '/buzzer_on':
           next = { ...next, buzzerOn: true, isBreached: true };
-          addTestLog('warning', '[TEST] Buzzer + breach latched via web'); break;
+          if (next.buzzerEnabled) {
+            addTestLog('warning', '[TEST] Buzzer alarm screaming + Alert LED active');
+          } else {
+            addTestLog('warning', '[TEST] Alert LED active (Buzzer sound is MUTED)');
+          }
+          break;
         case '/buzzer_off':
           next = { ...next, buzzerOn: false };
-          addTestLog('info', '[TEST] Buzzer silenced'); break;
+          addTestLog('info', '[TEST] Alarm silenced'); break;
         case '/reset':
-          next = { ...DEFAULT_TEST_STATE };
+          next = { ...DEFAULT_TEST_STATE, buzzerEnabled: prev.buzzerEnabled };
           addTestLog('info', '[TEST] System fully reset'); break;
         case '__sim_wrong_pin': {
           const attempts = prev.failedAttempts + 1;
           if (attempts >= 3) {
-            addTestLog('critical', '[TEST] 3 wrong PINs — breach triggered');
+            if (next.buzzerEnabled) {
+              addTestLog('critical', '[TEST] 3 wrong PINs — breach triggered (Buzzer screaming + LED active)');
+            } else {
+              addTestLog('critical', '[TEST] 3 wrong PINs — breach triggered (LED active, Buzzer muted)');
+            }
             next = { ...next, failedAttempts: attempts, buzzerOn: true, isSecretCompartmentOpen: true, isBreached: true, lcdText: [' SYSTEM BREACHED', '  ALARM ACTIVE! '] };
           } else {
             addTestLog('warning', `[TEST] Wrong PIN — attempt ${attempts}/3`);
@@ -434,7 +446,11 @@ function App() {
           break;
         }
         case '__sim_vibration':
-          addTestLog('critical', '[TEST] Vibration detected — tamper alert');
+          if (next.buzzerEnabled) {
+            addTestLog('critical', '[TEST] Vibration detected — tamper alert (Buzzer screaming + LED active)');
+          } else {
+            addTestLog('critical', '[TEST] Vibration detected — tamper alert (LED active, Buzzer muted)');
+          }
           next = { ...next, vibrationDetected: true, buzzerOn: true, isBreached: true, lcdText: ['TAMPER DETECTED!', '  ALARM ACTIVE! '] };
           break;
         default: break;
@@ -463,7 +479,7 @@ function App() {
             await clearAllLogs();
             setLiveState(prev => ({ ...prev, logs: [] }));
           }} />} />
-          <Route path="/settings" element={<Settings />} />
+          <Route path="/settings" element={<Settings mode={mode} />} />
         </Routes>
       </Layout>
     </Router>

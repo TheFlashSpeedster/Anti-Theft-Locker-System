@@ -44,6 +44,7 @@ const int TELEGRAM_TIMEOUT   = 3000;
 #define SERVO1_PIN    18
 #define SERVO2_PIN    19
 #define BUZZER_PIN     2
+#define LED_PIN       23
 #define VIBRATION_PIN  5
 
 // ===================== KEYPAD SETUP ========================
@@ -71,6 +72,7 @@ bool alertTriggered    = false;
 bool vibAlertTriggered = false;
 bool ntpSynced         = false;
 bool vibSensorEnabled  = false;   // set true when physical SW-420 is connected & working
+bool buzzerEnabled     = true;    // true by default
 unsigned long vibLastTrigger  = 0;
 unsigned long systemStartTime = 0;
 unsigned long lastNtpRetry    = 0;
@@ -149,7 +151,9 @@ void loadConfig() {
   if (tok.length() > 10) { TELEGRAM_TOKEN   = tok; Serial.println("[CFG] Telegram token loaded."); }
   if (cid.length() >  0) { TELEGRAM_CHAT_ID = cid; Serial.println("[CFG] Telegram chatId loaded."); }
   vibSensorEnabled = prefs.getBool("vibEnabled", false);  // default OFF (safe for broken/missing sensor)
+  buzzerEnabled    = prefs.getBool("buzzEnabled", true);   // default ON
   Serial.println("[CFG] Vib sensor HW: " + String(vibSensorEnabled ? "ENABLED" : "DISABLED"));
+  Serial.println("[CFG] Buzzer sound: " + String(buzzerEnabled ? "ENABLED" : "DISABLED"));
   prefs.end();
 }
 
@@ -159,6 +163,7 @@ void saveConfig() {
   prefs.putString("tgToken",   TELEGRAM_TOKEN);
   prefs.putString("tgChatId",  TELEGRAM_CHAT_ID);
   prefs.putBool("vibEnabled",  vibSensorEnabled);
+  prefs.putBool("buzzEnabled",  buzzerEnabled);
   prefs.end();
   Serial.println("[CFG] Config saved to flash.");
 }
@@ -252,10 +257,11 @@ void handleStatus() {
   doc["isLocked"]                = !lockerOpen;
   doc["isSecretCompartmentOpen"] = (servo2.read() == SERVO2_OPEN);
   doc["failedAttempts"]          = failedAttempts;
-  doc["buzzerOn"]                = (digitalRead(BUZZER_PIN) == HIGH);
+  doc["buzzerOn"]                = (digitalRead(LED_PIN) == HIGH);
   doc["isBreached"]              = alertTriggered;
   doc["vibrationDetected"]       = vibAlertTriggered;
   doc["vibSensorEnabled"]        = vibSensorEnabled;
+  doc["buzzerEnabled"]           = buzzerEnabled;
   doc["ntpSynced"]               = ntpSynced;
   doc["lastSeen"]                = getCurrentTime();
   doc["uptimeMs"]                = (long)millis();
@@ -318,6 +324,17 @@ void handleConfigHTTP() {
     changed = true;
     Serial.println("[CFG] Vib sensor HW set to: " + String(vibSensorEnabled ? "ENABLED" : "DISABLED"));
     addLog("info", vibSensorEnabled ? "HW vibration sensor ENABLED" : "HW vibration sensor DISABLED");
+  }
+  if (doc.containsKey("buzzerEnabled")) {
+    buzzerEnabled = doc["buzzerEnabled"].as<bool>();
+    changed = true;
+    Serial.println("[CFG] Buzzer sound set to: " + String(buzzerEnabled ? "ENABLED" : "DISABLED"));
+    addLog("info", buzzerEnabled ? "Buzzer alarm ENABLED" : "Buzzer alarm MUTED/DISABLED");
+    if (!buzzerEnabled) {
+      digitalWrite(BUZZER_PIN, LOW); // immediately mute if disabled
+    } else if (digitalRead(LED_PIN) == HIGH) {
+      digitalWrite(BUZZER_PIN, HIGH); // immediately unmute if alert is actively flashing
+    }
   }
   if (changed) saveConfig();
   server.send(200, "application/json", "{\"ok\":true}");
@@ -401,31 +418,34 @@ void openLocker() {
 void triggerSecurityAlert(String reason) {
   if (alertTriggered) return;
   alertTriggered = true;
-  digitalWrite(BUZZER_PIN, HIGH);
+  if (buzzerEnabled) {
+    digitalWrite(BUZZER_PIN, HIGH);
+  }
+  digitalWrite(LED_PIN, HIGH);
   lcd.clear();
   lcd.setCursor(0, 0); lcd.print(" !! ALERT !!    ");
   lcd.setCursor(0, 1); lcd.print(reason.substring(0, 16));
-  Serial.println("[ALERT] " + reason + " — Trapdoor deploying. Buzzer latched ON.");
+  Serial.println("[ALERT] " + reason + " — Trapdoor deploying. Alert active.");
 
   String tgramMsg;
   if (reason.indexOf("Wrong Pass") >= 0 || reason.indexOf("Wrong PIN") >= 0) {
     tgramMsg = "🔐 <b>SECURITY BREACH — Wrong PIN</b>\n"
                "3 consecutive failed unlock attempts detected.\n"
-               "⏰ Buzzer active | Trapdoor deployed\n"
+               "⏰ Alert active | Trapdoor deployed\n"
                "• Enter correct PIN on keypad, OR\n"
                "• Reset via web dashboard.";
   } else if (reason.indexOf("Tamper") >= 0 || reason.indexOf("Vibration") >= 0) {
     tgramMsg = "⚡ <b>SECURITY BREACH — Physical Tamper</b>\n"
                "Vibration sensor (SW-420) triggered!\n"
-               "⏰ Buzzer active | Trapdoor deployed\n"
+               "⏰ Alert active | Trapdoor deployed\n"
                "• Enter correct PIN on keypad, OR\n"
                "• Reset via web dashboard.";
   } else {
     tgramMsg = "🚨 <b>SECURITY BREACH</b>\nReason: " + reason + "\n"
-               "⏰ Buzzer active | Trapdoor deployed\nReset via web or correct PIN.";
+               "⏰ Alert active | Trapdoor deployed\nReset via web or correct PIN.";
   }
   queueTelegram(tgramMsg);
-  addLog("critical", "ALERT: " + reason + " — buzzer latched, reset required");
+  addLog("critical", "ALERT: " + reason + " — alert latched, reset required");
   flipTrapdoor();
   lcd.clear();
   lcd.setCursor(0, 0); lcd.print(" !! ALERT !!    ");
@@ -440,6 +460,7 @@ void resetAlert() {
   vibLastTrigger    = millis();   // enforce cooldown — sensor may still be vibrating
   servo2.write(SERVO2_CLOSED);
   digitalWrite(BUZZER_PIN, LOW);
+  digitalWrite(LED_PIN, LOW);
   lcd.clear();
   lcd.setCursor(0, 0); lcd.print(" System Reset   ");
   waitWithKeypad(1500);
@@ -495,21 +516,25 @@ void handleWebCommand(String text) {
 
   } else if (text == "/buzzer_on") {
     alertTriggered = true;
-    digitalWrite(BUZZER_PIN, HIGH);
+    if (buzzerEnabled) {
+      digitalWrite(BUZZER_PIN, HIGH);
+    }
+    digitalWrite(LED_PIN, HIGH);
     lcd.clear();
-    lcd.setCursor(0, 0); lcd.print(" BUZZER ON      ");
+    lcd.setCursor(0, 0); lcd.print(" ALARM ON       ");
     lcd.setCursor(0, 1); lcd.print(" ALERT ACTIVE   ");
     queueTelegram("🌐 <b>REMOTE ALERT — Web Trigger</b>\n"
                   "Alarm activated manually via web dashboard.\n"
-                  "⏰ Buzzer latched ON\n"
+                  "⏰ Alert latched ON\n"
                   "• Stop via web dashboard Reset button, OR\n"
                   "• Enter correct PIN on keypad.");
-    action = "Buzzer LATCHED ON — web alert active";
+    action = "Alarm LATCHED ON — web alert active";
 
   } else if (text == "/buzzer_off") {
     digitalWrite(BUZZER_PIN, LOW);
+    digitalWrite(LED_PIN, LOW);
     showIdleScreen();
-    action = "Buzzer turned OFF";
+    action = "Alarm turned OFF";
 
   } else if (text == "/reset") {
     resetAlert();
@@ -609,8 +634,10 @@ void setup() {
   delay(1500);
 
   pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(LED_PIN, OUTPUT);
   pinMode(VIBRATION_PIN, INPUT_PULLDOWN);
   digitalWrite(BUZZER_PIN, LOW);
+  digitalWrite(LED_PIN, LOW);
   servo1.attach(SERVO1_PIN); servo1.write(SERVO1_LOCKED);
   servo2.attach(SERVO2_PIN); servo2.write(SERVO2_CLOSED);
 

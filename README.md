@@ -40,7 +40,8 @@ Features:
 | LCD SCL | D22 |
 | Servo 1 | D18 |
 | Servo 2 | D19 |
-| Buzzer/LED | D2 |
+| Buzzer | D2 |
+| Alert LED | D23 |
 | Vibration Sensor | D5 |
 
 ## 🚀 Future Scope
