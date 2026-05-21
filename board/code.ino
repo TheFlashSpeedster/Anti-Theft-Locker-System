@@ -6,16 +6,16 @@
  ============================================================
 */
 
-#include <ArduinoJson.h>
-#include <ESP32Servo.h>
-#include <HTTPClient.h>
-#include <Keypad.h>
-#include <LiquidCrystal_I2C.h>
-#include <Preferences.h>
-#include <WebServer.h>
-#include <WiFi.h>
-#include <Wire.h>
-#include <time.h>
+#include <ArduinoJson.h>      // Used to create, parse, and handle JSON data for APIs and cloud communication
+#include <ESP32Servo.h>       // Used to control servo motors using PWM signals on ESP32
+#include <HTTPClient.h>       // Used to send HTTP requests (GET, POST, etc.) to web servers or APIs
+#include <Keypad.h>           // Used to interface and read input from the 4x4 matrix keypad
+#include <LiquidCrystal_I2C.h> // Used to control the 16x2 LCD display through I2C communication
+#include <Preferences.h>      // Used for storing data permanently in ESP32 flash memory (non-volatile storage)
+#include <WebServer.h>        // Used to create a local web server on ESP32 for web-based control/dashboard
+#include <WiFi.h>             // Used to connect ESP32 to Wi-Fi networks for IoT communication
+#include <Wire.h>             // Used for I2C communication between ESP32 and devices like LCD/I2C module
+#include <time.h>             // Used to manage date, time, timestamps, and NTP time synchronization
 
 // ===================== CONFIGURATION =====================
 const char *WIFI_SSID = "hello123";
