@@ -38,11 +38,12 @@ Features:
 |---|---|
 | LCD SDA | D21 |
 | LCD SCL | D22 |
-| Servo 1 | D18 |
-| Servo 2 | D19 |
+| Servo 1 (Main) | D18 |
+| Servo 2 (Trapdoor) | D19 |
 | Buzzer | D2 |
 | Alert LED | D23 |
 | Vibration Sensor | D5 |
+| Keypad | Rows (D13, D12, D14, D27) Columns (D26, D25, D33, D32) |
 
 ## 🚀 Future Scope
 - IoT monitoring
